@@ -1,7 +1,7 @@
 // ===== Base Strategy - Classe de Base pour les Stratégies =====
 
 import { getEventBus, EVENTS, EventHelpers } from '../core/event-bus.js';
-import { getWalletManager } from '../core/wallet-manager.js';
+import { getWalletManager } from '../core/wallet-manager-new.js';
 import { getNotificationSystem } from '../core/notification-system.js';
 import { SETTINGS } from '../config.js';
 

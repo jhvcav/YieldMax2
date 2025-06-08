@@ -2,7 +2,7 @@
 
 import { validateConfig } from './config.js';
 import { getEventBus, EVENTS } from './core/event-bus.js';
-import { getWalletManager } from './core/wallet-manager.js';
+import { getWalletManager } from './core/wallet-manager-new.js';
 import { getNotificationSystem } from './core/notification-system.js';
 import AaveStrategy from './strategies/aave-strategy.js';
 
