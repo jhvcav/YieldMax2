@@ -20,8 +20,9 @@ class AaveStrategy extends BaseStrategy {
         console.log('🏦 AaveStrategy initialisée');
     }
 
-    
-    //Charger la configuration Aave
+    /**
+     * Charger la configuration Aave
+     */
     async loadConfiguration() {
         await super.loadConfiguration();
         
@@ -409,7 +410,9 @@ class AaveStrategy extends BaseStrategy {
         console.log('💾 Nouveau dépôt Aave enregistré:', newDeposit);
     }
 
-    //Obtenir l'APY actuel
+    /**
+     * Obtenir l'APY actuel
+     */
     async getCurrentAPY() {
         try {
             const reserveData = await this.contracts.dataProvider.getReserveData(
@@ -465,7 +468,9 @@ class AaveStrategy extends BaseStrategy {
         }
     }
 
-    //Fermer une position (retrait complet)
+    /**
+     * Fermer une position (retrait complet)
+     */
     async closePosition(positionId) {
         return await this.executeTransaction(async () => {
             console.log('🔄 Fermeture position Aave...');
@@ -607,6 +612,7 @@ class AaveStrategy extends BaseStrategy {
                             <div class="metric-content">
                                 <span class="metric-label">Valeur Totale</span>
                                 <span class="metric-value" id="aaveTotalValue">$0.00</span>
+                                <span class="metric-sublabel">Capital + Intérêts</span>
                             </div>
                         </div>
                         
@@ -617,6 +623,7 @@ class AaveStrategy extends BaseStrategy {
                             <div class="metric-content">
                                 <span class="metric-label">Gains/Pertes</span>
                                 <span class="metric-value" id="aavePnL">$0.00</span>
+                                <span class="metric-sublabel">Rendement accumulé</span>
                             </div>
                         </div>
                         
@@ -627,6 +634,7 @@ class AaveStrategy extends BaseStrategy {
                             <div class="metric-content">
                                 <span class="metric-label">APY Actuel</span>
                                 <span class="metric-value" id="aaveAPY">0.00%</span>
+                                <span class="metric-sublabel">Taux annuel composé</span>
                             </div>
                         </div>
                         
@@ -637,6 +645,7 @@ class AaveStrategy extends BaseStrategy {
                             <div class="metric-content">
                                 <span class="metric-label">Rendement/Jour</span>
                                 <span class="metric-value" id="aaveDailyYield">$0.00</span>
+                                <span class="metric-sublabel">Estimation quotidienne</span>
                             </div>
                         </div>
                     </div>
@@ -698,7 +707,6 @@ class AaveStrategy extends BaseStrategy {
                     </div>
                     
                     <div id="aavePositionsList" class="positions-list">
-                        <!-- Les positions seront chargées dynamiquement -->
                     </div>
                 </div>
             </div>
@@ -940,7 +948,7 @@ class AaveStrategy extends BaseStrategy {
     }
 
     /**
-     * Rendre les positions
+     * Rendre les positions avec design amélioré
      */
     renderPositions() {
         const positionsList = document.getElementById('aavePositionsList');
@@ -951,59 +959,103 @@ class AaveStrategy extends BaseStrategy {
                 <div class="empty-state">
                     <i class="fas fa-seedling"></i>
                     <p>Aucune position Aave</p>
-                    <span>Effectuez un dépôt pour commencer</span>
+                    <span>Effectuez un dépôt pour commencer à gagner des intérêts</span>
                 </div>
             `;
             return;
         }
         
-        positionsList.innerHTML = this.positions.map(position => `
-            <div class="position-card">
-                <div class="position-header">
-                    <div class="position-info">
-                        <span class="position-asset">${position.asset}</span>
-                        <span class="position-amount">${position.amount} USDC</span>
+        positionsList.innerHTML = this.positions.map(position => {
+            const earnings = parseFloat(position.earnings) || 0;
+            const earningsPercentage = parseFloat(position.earningsPercentage) || 0;
+            const isPositive = earnings >= 0;
+            const performance = isPositive ? 'positive' : 'negative';
+            
+            // Calculer des métriques supplémentaires
+            const initialAmount = parseFloat(position.initialAmount) || 0;
+            const currentAmount = parseFloat(position.amount) || 0;
+            const apy = parseFloat(position.apr) || 0;
+            
+            // Estimation du rendement quotidien
+            const dailyEarnings = (currentAmount * apy / 100 / 365).toFixed(4);
+            const monthlyEarnings = (currentAmount * apy / 100 / 12).toFixed(2);
+            
+            return `
+                <div class="position-card" data-performance="${performance}">
+                    <!-- Header de la Position -->
+                    <div class="position-header">
+                        <div class="position-info">
+                            <span class="position-asset">${position.asset}</span>
+                            <span class="position-amount">${currentAmount.toFixed(6)} USDC</span>
+                        </div>
+                        <div class="position-status">
+                            <span class="status-badge active">Actif</span>
+                        </div>
                     </div>
-                    <div class="position-status">
-                        <span class="status-badge active">Actif</span>
+                    
+                    <!-- Métriques Détaillées -->
+                    <div class="position-metrics">
+                        <div class="metric-item">
+                            <span class="metric-label">APY Actuel</span>
+                            <span class="metric-value">${apy.toFixed(2)}%</span>
+                        </div>
+                        
+                        <div class="metric-item">
+                            <span class="metric-label">Gains Totaux</span>
+                            <span class="metric-value ${isPositive ? 'text-success' : 'text-danger'}">
+                                ${isPositive ? '+' : ''}${earnings.toFixed(4)} USDC
+                            </span>
+                        </div>
+                        
+                        <div class="metric-item">
+                            <span class="metric-label">Performance</span>
+                            <span class="metric-value ${isPositive ? 'text-success' : 'text-danger'}">
+                                ${isPositive ? '+' : ''}${earningsPercentage.toFixed(2)}%
+                            </span>
+                        </div>
+                        
+                        <div class="metric-item">
+                            <span class="metric-label">Rendement/Jour</span>
+                            <span class="metric-value text-success">
+                                +${dailyEarnings} USDC
+                            </span>
+                        </div>
+                        
+                        <div class="metric-item">
+                            <span class="metric-label">Rendement/Mois</span>
+                            <span class="metric-value text-success">
+                                +${monthlyEarnings} USDC
+                            </span>
+                        </div>
+                        
+                        <div class="metric-item">
+                            <span class="metric-label">Dépôt Initial</span>
+                            <span class="metric-value">
+                                ${initialAmount.toFixed(2)} USDC
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="position-actions">
+                        <button class="action-btn secondary" onclick="window.app.strategies.get('aave').withdrawEarnings()" ${earnings <= 0 ? 'disabled' : ''}>
+                            <i class="fas fa-coins"></i>
+                            Gains (${earnings.toFixed(4)})
+                        </button>
+                        
+                        <button class="action-btn danger" onclick="window.app.strategies.get('aave').closePosition('${position.id}')">
+                            <i class="fas fa-wallet"></i>
+                            Retirer Tout
+                        </button>
+                        
+                        <a href="https://app.aave.com/dashboard" target="_blank" class="action-btn info">
+                            <i class="fas fa-external-link-alt"></i>
+                            Voir sur Aave
+                        </a>
                     </div>
                 </div>
-                
-                <div class="position-metrics">
-                    <div class="metric-item">
-                        <span class="metric-label">APY</span>
-                        <span class="metric-value">${position.apr}%</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Gains</span>
-                        <span class="metric-value ${parseFloat(position.earnings) >= 0 ? 'text-success' : 'text-danger'}">
-                            ${parseFloat(position.earnings) >= 0 ? '+' : ''}${position.earnings} USDC
-                        </span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Performance</span>
-                        <span class="metric-value ${parseFloat(position.earningsPercentage) >= 0 ? 'text-success' : 'text-danger'}">
-                            ${parseFloat(position.earningsPercentage) >= 0 ? '+' : ''}${position.earningsPercentage}%
-                        </span>
-                    </div>
-                </div>
-                
-                <div class="position-actions">
-                    <button class="action-btn secondary" onclick="window.app.strategies.get('aave').withdrawEarnings()">
-                        <i class="fas fa-coins"></i>
-                        Retirer Gains
-                    </button>
-                    <button class="action-btn danger" onclick="window.app.strategies.get('aave').closePosition('${position.id}')">
-                        <i class="fas fa-wallet"></i>
-                        Retirer Tout
-                    </button>
-                    <a href="https://app.aave.com/dashboard" target="_blank" class="action-btn info">
-                        <i class="fas fa-external-link-alt"></i>
-                        Voir sur Aave
-                    </a>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     /**
