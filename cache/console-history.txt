@@ -1,0 +1,11 @@
+await contract.trustedWallet();
+await contract.trustedWalletFeeBps();
+await contract.platformFeeBps();
+await contract.getUserPosition("0x1FF70C1DFc33F5DDdD1AD2b525a07b172182d8eF");
+await contract.getPoolMetrics()
+await contract.authorizedDEXs("0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506");
+await contract.authorizedDEXs("0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff");
+await contract.authorizedTokens("0xc2132D05D31c914a87C6611C10748AEb04B58e8F");
+await contract.authorizedTokens("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174");
+await contract.owner(); // Vérifier que tu es bien le owner
+const contract = await ethers.getContractAt("FlashLoanArbitrageComplete", "0x78d214d088CEe374705c0303fB360046DAf0B466");

@@ -5,6 +5,7 @@ import { getEventBus, EVENTS } from './core/event-bus.js';
 import { getWalletManager } from './core/wallet-manager-new.js';
 import { getNotificationSystem } from './core/notification-system.js';
 import AaveStrategy from './strategies/aave-strategy.js';
+import { FlashLoanStrategy } from './strategies/flashloan-strategy.js';
 
 class YieldMax2App {
     constructor() {
@@ -117,10 +118,10 @@ class YieldMax2App {
             aaveStrategy.setContainer(this.elements.aaveStrategyContainer);
             this.strategies.set('aave', aaveStrategy);
             
-            // Stratégie Flash Loan (à implémenter)
-            // const flashloanStrategy = new FlashLoanStrategy(this);
-            // flashloanStrategy.setContainer(this.elements.flashloanStrategyContainer);
-            // this.strategies.set('flashloan', flashloanStrategy);
+            // Stratégie Flash Loan
+            const flashloanStrategy = new FlashLoanStrategy(this.walletManager);
+            flashloanStrategy.setContainer(this.elements.flashloanStrategyContainer);
+            this.strategies.set('flashloan', flashloanStrategy);
             
             console.log(`✅ ${this.strategies.size} stratégies chargées`);
             

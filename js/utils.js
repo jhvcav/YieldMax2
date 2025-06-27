@@ -277,8 +277,6 @@ export class StorageUtils {
         }
     }
 
-    // ===== YieldMax2 - Utilitaires (Suite) =====
-
     /**
      * Supprimer des données
      * @param {string} key - Clé à supprimer
@@ -766,7 +764,8 @@ export class ErrorUtils {
         console.groupEnd();
         
         // En production, envoyer à un service de monitoring
-        if (process.env.NODE_ENV === 'production') {
+        if (window.location.hostname !== 'localhost' && 
+            window.location.hostname !== '127.0.0.1') {
             // Sentry, LogRocket, etc.
         }
         
@@ -854,3 +853,17 @@ export default {
     ErrorUtils,
     UrlUtils
 };
+
+// Ajoute ces fonctions à ton utils.js existant
+export function formatNumber(value, decimals = 2) {
+    const num = parseFloat(value) || 0;
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    }).format(num);
+}
+
+export function formatPercent(value, decimals = 2) {
+    const num = parseFloat(value) || 0;
+    return `${num.toFixed(decimals)}%`;
+}

@@ -1,0 +1,16 @@
+{
+  "network": "polygon",
+  "chainId": 137,
+  "contractAddress": "0x78d214d088CEe374705c0303fB360046DAf0B466",
+  "deployerAddress": "0x1FF70C1DFc33F5DDdD1AD2b525a07b172182d8eF",
+  "aaveAddressProvider": "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
+  "usdc": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+  "usdt": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+  "feeCollector": "0x1FF70C1DFc33F5DDdD1AD2b525a07b172182d8eF",
+  "blockNumber": 73291959,
+  "timestamp": "2025-06-27T16:57:59.594Z",
+  "transactionHash": "0x12119bb41cfbfe4d45c2b39c57b54d6947311bfe0163e55a6c5ed6ea24cf818e",
+  "gasUsed": "3876527",
+  "gasPrice": "30000000000",
+  "deploymentCost": "0.11629581"
+}
