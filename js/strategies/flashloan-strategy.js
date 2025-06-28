@@ -70,7 +70,7 @@ class FlashLoanErrorHandler {
     }
 }
 
-export class FlashLoanStrategy extends BaseStrategy {
+class FlashLoanStrategy extends BaseStrategy {
     constructor(walletManager) {
         super('flashloan', walletManager);
         this.name = 'Flash Loan Arbitrage';
