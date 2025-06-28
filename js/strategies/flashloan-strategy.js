@@ -129,7 +129,7 @@ export class FlashLoanStrategy extends BaseStrategy {
             this.monitoringInterval = null;
         }
         
-        NotificationSystem.show('Surveillance arrêtée', 'info');
+        this.notificationSystem.show('Surveillance arrêtée', 'info');
         this.render();
     }
 
@@ -214,7 +214,7 @@ export class FlashLoanStrategy extends BaseStrategy {
     // Exécuter un arbitrage avec flash loan
     async executeArbitrage(opportunity) {
         if (!this.walletManager.isConnected) {
-            NotificationSystem.show('Wallet non connecté', 'error');
+            this.notificationSystem.show('Wallet non connecté', 'error');
             return;
         }
 
@@ -226,7 +226,7 @@ export class FlashLoanStrategy extends BaseStrategy {
         });
 
         try {
-            NotificationSystem.show(`Exécution arbitrage ${opportunity.token}...`, 'info');
+            this.notificationSystem.show(`Exécution arbitrage ${opportunity.token}...`, 'info');
             
             // Simulation de l'exécution - remplacer par la vraie logique
             await this.simulateFlashLoanExecution(opportunity);
@@ -242,7 +242,7 @@ export class FlashLoanStrategy extends BaseStrategy {
                 endTime: Date.now()
             });
             
-            NotificationSystem.show(
+            this.notificationSystem.show(
                 `Arbitrage réussi! Profit: $${formatNumber(opportunity.estimatedProfit)}`, 
                 'success'
             );
@@ -258,7 +258,7 @@ export class FlashLoanStrategy extends BaseStrategy {
                 endTime: Date.now()
             });
             
-            NotificationSystem.show(`Échec arbitrage: ${error.message}`, 'error');
+            this.notificationSystem.show(`Échec arbitrage: ${error.message}`, 'error');
         }
         
         this.render();
@@ -517,7 +517,7 @@ export class FlashLoanStrategy extends BaseStrategy {
                 break;
         }
         
-        NotificationSystem.show('Configuration mise à jour', 'success');
+        this.notificationSystem.show('Configuration mise à jour', 'success');
     }
 
     // Méthodes héritées de BaseStrategy
