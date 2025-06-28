@@ -1226,9 +1226,6 @@ export class FlashLoanStrategy extends BaseStrategy {
     }
 }
 
-// Export et initialisation pour votre architecture
-export { FlashLoanStrategy };
-
 // Fonction d'initialisation spécifique à votre setup
 export function initializeFlashLoanStrategy(walletManager) {
     try {
