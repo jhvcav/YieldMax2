@@ -24,7 +24,7 @@ export class FlashLoanStrategy extends BaseStrategy {
         this.eventBus = getEventBus();
         this.notificationSystem = getNotificationSystem();
         this.description = 'Arbitrage automatique avec emprunts flash sans capital initial';
-        
+
         // Configuration des protocoles
         this.protocols = {
             flashLoanProviders: ['aave', 'balancer', 'dydx'],
@@ -52,6 +52,10 @@ export class FlashLoanStrategy extends BaseStrategy {
         
         this.isMonitoring = false;
         this.monitoringInterval = null;
+
+        // 🆕 Configuration du vrai contrat
+        this.contractAddress = "0x78d214d088CEe374705c0303fB360046DAf0B466";
+        this.contract = null; // Sera initialisé quand wallet connecté
         
         this.init();
     }
@@ -88,6 +92,31 @@ export class FlashLoanStrategy extends BaseStrategy {
 
     async onWalletConnected() {
         await this.loadContracts();
+        // 🆕 Initialiser le vrai contrat Flash Loan
+    if (this.walletManager.signer) {
+        const { getABI } = await import('../config.js');
+        const abi = getABI('FLASHLOAN_ARBITRAGE');
+        this.contract = new ethers.Contract(
+            this.contractAddress, 
+            abi, 
+            this.walletManager.signer
+        );
+        
+        // Vérifier que le contrat est accessible
+        try {
+            const owner = await this.contract.owner();
+            console.log('🎯 Contrat Flash Loan connecté, owner:', owner);
+            this.notificationSystem.show('Contrat Flash Loan connecté !', 'success');
+        } catch (error) {
+            console.error('❌ Erreur connexion contrat:', error);
+            this.notificationSystem.show('Erreur connexion contrat', 'error');
+        }
+    }
+
+    // 🆕 Charger les vraies données après connexion
+    await this.loadRealContractData();
+    await this.loadUserBalances();
+    
         this.render();
     }
 
@@ -213,56 +242,78 @@ export class FlashLoanStrategy extends BaseStrategy {
 
     // Exécuter un arbitrage avec flash loan
     async executeArbitrage(opportunity) {
-        if (!this.walletManager.isConnected) {
-            this.notificationSystem.show('Wallet non connecté', 'error');
-            return;
-        }
+    if (!this.walletManager.isConnected) {
+        this.notificationSystem.show('Wallet non connecté', 'error');
+        return;
+    }
 
-        const arbitrageId = `arb_${Date.now()}`;
-        this.activeArbitrages.set(arbitrageId, {
-            ...opportunity,
-            status: 'executing',
-            startTime: Date.now()
+    if (!this.contract) {
+        this.notificationSystem.show('Contrat non initialisé', 'error');
+        return;
+    }
+
+    try {
+        this.notificationSystem.show(`🚀 Flash Loan en cours: ${opportunity.token}...`, 'info');
+        
+        // 🆕 Créer les paramètres réels pour le contrat
+        const params = {
+            tokenA: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", // USDC
+            tokenB: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", // USDT
+            dexRouter1: "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", // QuickSwap
+            dexRouter2: "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506", // SushiSwap
+            amountIn: ethers.parseUnits("1000", 6), // 1000 USDC
+            minProfitBps: 10, // 0.1% minimum
+            reverseDirection: false,
+            maxSlippage: 50, // 0.5%
+            deadline: Math.floor(Date.now() / 1000) + 1800 // 30 minutes
+        };
+
+        // 🆕 Estimer le gas
+        const gasEstimate = await this.contract.executeArbitrage.estimateGas(params);
+        console.log('⛽ Gas estimé:', gasEstimate.toString());
+
+        // 🆕 Exécuter le VRAI Flash Loan !
+        const tx = await this.contract.executeArbitrage(params, {
+            gasLimit: gasEstimate.mul(120).div(100) // +20% de marge
         });
 
-        try {
-            this.notificationSystem.show(`Exécution arbitrage ${opportunity.token}...`, 'info');
+        this.notificationSystem.show(`⏳ Transaction envoyée: ${tx.hash}`, 'info');
+        
+        // Attendre la confirmation
+        const receipt = await tx.wait();
+        
+        // Analyser les événements pour récupérer le profit
+        const arbitrageEvent = receipt.events?.find(e => e.event === 'ArbitrageExecuted');
+        if (arbitrageEvent) {
+            const profit = ethers.formatUnits(arbitrageEvent.args.userProfit, 6);
+            this.notificationSystem.show(`🎉 Flash Loan réussi! Profit: $${profit}`, 'success');
             
-            // Simulation de l'exécution - remplacer par la vraie logique
-            await this.simulateFlashLoanExecution(opportunity);
-            
-            // Succès
+            // Mettre à jour les stats
             this.stats.successfulTrades++;
-            this.stats.totalProfit += opportunity.estimatedProfit;
-            this.stats.totalVolume += opportunity.buyPrice;
-            
-            this.activeArbitrages.set(arbitrageId, {
-                ...this.activeArbitrages.get(arbitrageId),
-                status: 'completed',
-                endTime: Date.now()
-            });
-            
-            this.notificationSystem.show(
-                `Arbitrage réussi! Profit: $${formatNumber(opportunity.estimatedProfit)}`, 
-                'success'
-            );
-            
-        } catch (error) {
-            console.error('Erreur arbitrage:', error);
-            this.stats.failedTrades++;
-            
-            this.activeArbitrages.set(arbitrageId, {
-                ...this.activeArbitrages.get(arbitrageId),
-                status: 'failed',
-                error: error.message,
-                endTime: Date.now()
-            });
-            
-            this.notificationSystem.show(`Échec arbitrage: ${error.message}`, 'error');
+            this.stats.totalProfit += parseFloat(profit);
+        } else {
+            this.notificationSystem.show('Flash Loan exécuté (vérifiez la transaction)', 'success');
+        }
+
+    } catch (error) {
+        console.error('❌ Erreur Flash Loan:', error);
+        
+        // Analyser l'erreur
+        if (error.code === 4001) {
+            this.notificationSystem.show('Transaction annulée', 'warning');
+        } else if (error.message.includes('insufficient funds')) {
+            this.notificationSystem.show('Fonds insuffisants', 'error');
+        } else if (error.message.includes('Arbitrage non profitable')) {
+            this.notificationSystem.show('Arbitrage non rentable', 'warning');
+        } else {
+            this.notificationSystem.show(`Erreur: ${error.message}`, 'error');
         }
         
-        this.render();
+        this.stats.failedTrades++;
     }
+    
+    this.render();
+}
 
     async simulateFlashLoanExecution(opportunity) {
         // Simulation d'une transaction flash loan
@@ -277,104 +328,263 @@ export class FlashLoanStrategy extends BaseStrategy {
         });
     }
 
+    async depositToPool(tokenSymbol, amount) {
+    if (!this.walletManager.isConnected) {
+        this.notificationSystem.show('Connectez votre wallet', 'error');
+        return;
+    }
+
+    if (!this.contract) {
+        this.notificationSystem.show('Contrat non initialisé', 'error');
+        return;
+    }
+
+    try {
+        // Adresses des tokens
+        const tokenAddresses = {
+            'USDC': '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+            'USDT': '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
+        };
+
+        const tokenAddress = tokenAddresses[tokenSymbol];
+        const decimals = 6; // USDC et USDT ont 6 décimales
+        const amountWei = ethers.parseUnits(amount.toString(), decimals);
+
+        this.notificationSystem.show(`Préparation dépôt ${amount} ${tokenSymbol}...`, 'info');
+
+        // 1. Créer le contrat du token
+        const { getABI } = await import('../config.js');
+        const tokenContract = new ethers.Contract(
+            tokenAddress,
+            getABI('ERC20'),
+            this.walletManager.signer
+        );
+
+        // 2. Vérifier le solde
+        const balance = await tokenContract.balanceOf(this.walletManager.account);
+        if (balance < amountWei) {
+            this.notificationSystem.show(`Solde insuffisant. Vous avez ${ethers.formatUnits(balance, decimals)} ${tokenSymbol}`, 'error');
+            return;
+        }
+
+        // 3. Vérifier l'allowance
+        const allowance = await tokenContract.allowance(this.walletManager.account, this.contractAddress);
+        
+        if (allowance < amountWei) {
+            this.notificationSystem.show(`Approbation ${tokenSymbol} en cours...`, 'info');
+            
+            const approveTx = await tokenContract.approve(this.contractAddress, amountWei);
+            this.notificationSystem.show(`Attente confirmation approbation...`, 'info');
+            await approveTx.wait();
+            
+            this.notificationSystem.show(`${tokenSymbol} approuvé !`, 'success');
+        }
+
+        // 4. Déposer dans le contrat
+        this.notificationSystem.show(`Dépôt ${amount} ${tokenSymbol} en cours...`, 'info');
+        
+        const depositTx = await this.contract.deposit(tokenAddress, amountWei);
+        this.notificationSystem.show(`Transaction envoyée: ${depositTx.hash}`, 'info');
+        
+        const receipt = await depositTx.wait();
+        
+        // 5. Succès !
+        this.notificationSystem.show(`✅ Dépôt réussi ! ${amount} ${tokenSymbol} déposés`, 'success');
+        
+        // 6. Actualiser les données
+        await this.loadRealContractData();
+        await this.loadUserBalances();
+
+    } catch (error) {
+        console.error('Erreur dépôt:', error);
+        
+        if (error.code === 4001) {
+            this.notificationSystem.show('Transaction annulée', 'warning');
+        } else if (error.message.includes('insufficient funds')) {
+            this.notificationSystem.show('Fonds insuffisants pour les gas fees', 'error');
+        } else {
+            this.notificationSystem.show(`Erreur: ${error.message}`, 'error');
+        }
+    }
+}
+
+async loadRealContractData() {
+    if (!this.contract || !this.walletManager.isConnected) return;
+
+    try {
+        console.log('📊 Chargement données contrat...');
+
+        // 1. Récupérer les métriques globales du pool
+        const poolMetrics = await this.contract.getPoolMetrics();
+        
+        // 2. Récupérer la position de l'utilisateur
+        const userPosition = await this.contract.getUserPosition(this.walletManager.account);
+        
+        // 3. Convertir les données du contrat
+        const realData = {
+            // Métriques du pool
+            totalUSDCDeposits: parseFloat(ethers.formatUnits(poolMetrics.totalUSDCDeposits, 6)),
+            totalUSDTDeposits: parseFloat(ethers.formatUnits(poolMetrics.totalUSDTDeposits, 6)),
+            totalProfits: parseFloat(ethers.formatUnits(poolMetrics.totalProfits, 6)),
+            successfulTrades: parseInt(poolMetrics.successfulTrades),
+            failedTrades: parseInt(poolMetrics.failedTrades),
+            totalVolume: parseFloat(ethers.formatUnits(poolMetrics.totalVolume, 6)),
+            
+            // Position utilisateur
+            userUsdcShares: parseFloat(ethers.formatUnits(userPosition.usdcShares, 6)),
+            userUsdtShares: parseFloat(ethers.formatUnits(userPosition.usdtShares, 6)),
+            userTotalDeposited: parseFloat(ethers.formatUnits(userPosition.totalDeposited, 6)),
+            userTotalProfits: parseFloat(ethers.formatUnits(userPosition.totalProfits, 6)),
+            depositCount: parseInt(userPosition.depositCount),
+            withdrawalCount: parseInt(userPosition.withdrawalCount)
+        };
+
+        // 4. Mettre à jour les stats internes
+        this.stats = {
+            totalProfit: realData.totalProfits,
+            successfulTrades: realData.successfulTrades,
+            failedTrades: realData.failedTrades,
+            totalVolume: realData.totalVolume
+        };
+
+        // 5. Mettre à jour l'interface avec les vraies données
+        this.updateInterfaceWithRealData(realData);
+
+        console.log('✅ Données contrat chargées:', realData);
+
+    } catch (error) {
+        console.error('❌ Erreur chargement données contrat:', error);
+        this.notificationSystem.show('Erreur récupération données', 'error');
+    }
+}
+
+async loadUserBalances() {
+    if (!this.walletManager.isConnected) return;
+
+    try {
+        const { getABI } = await import('../config.js');
+        const erc20ABI = getABI('ERC20');
+
+        // Adresses des tokens
+        const tokens = {
+            USDC: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+            USDT: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
+        };
+
+        // Récupérer les soldes
+        for (const [symbol, address] of Object.entries(tokens)) {
+            const contract = new ethers.Contract(address, erc20ABI, this.walletManager.provider);
+            const balance = await contract.balanceOf(this.walletManager.account);
+            const formattedBalance = ethers.formatUnits(balance, 6);
+
+            // Mettre à jour dans l'interface
+            const balanceElement = document.getElementById(`${symbol.toLowerCase()}Balance`);
+            if (balanceElement) {
+                balanceElement.textContent = parseFloat(formattedBalance).toFixed(2);
+            }
+        }
+
+    } catch (error) {
+        console.error('Erreur chargement soldes:', error);
+    }
+}
+
+updateInterfaceWithRealData(data) {
+    // Mettre à jour les métriques globales
+    const totalValueElement = document.querySelector('.stat-value');
+    if (totalValueElement) {
+        const totalValue = data.totalUSDCDeposits + data.totalUSDTDeposits;
+        totalValueElement.textContent = `$${totalValue.toFixed(2)}`;
+    }
+
+    // Mettre à jour la position utilisateur
+    const elements = {
+        'userUsdcShares': data.userUsdcShares.toFixed(2),
+        'userUsdtShares': data.userUsdtShares.toFixed(2),
+        'userTotalProfits': `$${data.userTotalProfits.toFixed(2)}`
+    };
+
+    Object.entries(elements).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
+        }
+    });
+
+    console.log('🎨 Interface mise à jour avec les vraies données');
+}
+
     // Interface utilisateur
     render() {
         const container = document.getElementById('flashloanStrategyContainer');
         if (!container) return;
 
         container.innerHTML = `
-            <div class="flashloan-strategy">
-                <!-- Contrôles principaux -->
-                <div class="strategy-controls">
-                    <div class="control-group">
-                        <button id="toggleMonitoring" class="btn ${this.isMonitoring ? 'btn-danger' : 'btn-primary'}">
-                            <i class="fas ${this.isMonitoring ? 'fa-stop' : 'fa-play'}"></i>
-                            ${this.isMonitoring ? 'Arrêter' : 'Démarrer'} Surveillance
+        <div class="flashloan-strategy">
+            
+            <!-- Sections existantes : contrôles, stats, config... -->
+            
+            <!-- 🆕 NOUVELLE SECTION DÉPÔT -->
+            <div class="deposit-section">
+                <h3><i class="fas fa-piggy-bank"></i> Déposer dans le Pool</h3>
+                <div class="deposit-grid">
+                    <div class="deposit-card">
+                        <div class="token-header">
+                            <img src="https://cryptologos.cc/logos/usd-coin-usdc-logo.png" alt="USDC" class="token-icon">
+                            <span class="token-name">USDC</span>
+                        </div>
+                        <input type="number" id="usdcDepositAmount" placeholder="Montant USDC" min="100" step="10">
+                        <button id="depositUSDC" class="deposit-btn">
+                            <i class="fas fa-plus"></i>
+                            Déposer USDC
                         </button>
-                        
-                        <button id="refreshOpportunities" class="btn btn-secondary">
-                            <i class="fas fa-sync-alt"></i>
-                            Actualiser
-                        </button>
+                        <div class="balance-info">
+                            Solde: <span id="usdcBalance">0</span> USDC
+                        </div>
                     </div>
                     
-                    <div class="monitoring-status">
-                        <span class="status-dot ${this.isMonitoring ? 'active' : ''}"></span>
-                        ${this.isMonitoring ? 'Surveillance active' : 'Surveillance arrêtée'}
-                    </div>
-                </div>
-
-                <!-- Statistiques -->
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-label">Profit Total</span>
-                        <span class="stat-value profit">$${formatNumber(this.stats.totalProfit)}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Trades Réussis</span>
-                        <span class="stat-value">${this.stats.successfulTrades}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Taux de Succès</span>
-                        <span class="stat-value">${this.getSuccessRate()}%</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Volume Total</span>
-                        <span class="stat-value">$${formatNumber(this.stats.totalVolume)}</span>
-                    </div>
-                </div>
-
-                <!-- Configuration -->
-                <div class="config-section">
-                    <h3><i class="fas fa-cog"></i> Configuration</h3>
-                    <div class="config-grid">
-                        <div class="config-item">
-                            <label>Profit Minimum (%)</label>
-                            <input type="number" id="minProfitThreshold" 
-                                   value="${this.config.minProfitThreshold * 100}" 
-                                   step="0.01" min="0.01" max="5">
+                    <div class="deposit-card">
+                        <div class="token-header">
+                            <img src="https://cryptologos.cc/logos/tether-usdt-logo.png" alt="USDT" class="token-icon">
+                            <span class="token-name">USDT</span>
                         </div>
-                        <div class="config-item">
-                            <label>Gas Max (Gwei)</label>
-                            <input type="number" id="maxGasPrice" 
-                                   value="${this.config.maxGasPrice}" 
-                                   min="10" max="500">
-                        </div>
-                        <div class="config-item">
-                            <label>Slippage (%)</label>
-                            <input type="number" id="slippageTolerance" 
-                                   value="${this.config.slippageTolerance * 100}" 
-                                   step="0.1" min="0.1" max="5">
-                        </div>
-                        <div class="config-item">
-                            <label>Intervalle Scan (sec)</label>
-                            <input type="number" id="monitoringInterval" 
-                                   value="${this.config.monitoringInterval / 1000}" 
-                                   min="1" max="60">
+                        <input type="number" id="usdtDepositAmount" placeholder="Montant USDT" min="100" step="10">
+                        <button id="depositUSDT" class="deposit-btn">
+                            <i class="fas fa-plus"></i>
+                            Déposer USDT
+                        </button>
+                        <div class="balance-info">
+                            Solde: <span id="usdtBalance">0</span> USDT
                         </div>
                     </div>
                 </div>
-
-                <!-- Opportunités actuelles -->
-                <div class="opportunities-section">
-                    <h3><i class="fas fa-search-dollar"></i> Opportunités Détectées</h3>
-                    <div class="opportunities-list">
-                        ${this.renderOpportunities()}
-                    </div>
-                </div>
-
-                <!-- Arbitrages actifs -->
-                <div class="active-arbitrages-section">
-                    <h3><i class="fas fa-bolt"></i> Arbitrages en Cours</h3>
-                    <div class="arbitrages-list">
-                        ${this.renderActiveArbitrages()}
+                
+                <!-- Position utilisateur -->
+                <div class="user-position">
+                    <h4>Votre Position</h4>
+                    <div class="position-grid">
+                        <div class="position-item">
+                            <span class="label">Parts USDC:</span>
+                            <span id="userUsdcShares">0</span>
+                        </div>
+                        <div class="position-item">
+                            <span class="label">Parts USDT:</span>
+                            <span id="userUsdtShares">0</span>
+                        </div>
+                        <div class="position-item">
+                            <span class="label">Profits totaux:</span>
+                            <span id="userTotalProfits">$0.00</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        `;
 
-        this.attachEventListeners();
-    }
+            <!-- Sections existantes : opportunités, arbitrages actifs... -->
+        </div>
+    `;
+
+    this.attachEventListeners();
+}
 
     renderOpportunities() {
         if (this.opportunities.length === 0) {
@@ -494,6 +704,31 @@ export class FlashLoanStrategy extends BaseStrategy {
                 }
             }
         }
+
+        // 🆕 Event listeners pour les dépôts
+    const depositUSDCBtn = document.getElementById('depositUSDC');
+    if (depositUSDCBtn) {
+        depositUSDCBtn.addEventListener('click', async () => {
+            const amount = document.getElementById('usdcDepositAmount').value;
+            if (amount && parseFloat(amount) >= 100) {
+                await this.depositToPool('USDC', amount);
+            } else {
+                this.notificationSystem.show('Montant minimum: 100 USDC', 'warning');
+            }
+        });
+    }
+
+    const depositUSDTBtn = document.getElementById('depositUSDT');
+    if (depositUSDTBtn) {
+        depositUSDTBtn.addEventListener('click', async () => {
+            const amount = document.getElementById('usdtDepositAmount').value;
+            if (amount && parseFloat(amount) >= 100) {
+                await this.depositToPool('USDT', amount);
+            } else {
+                this.notificationSystem.show('Montant minimum: 100 USDT', 'warning');
+            }
+        });
+    }
     });
     }
 
