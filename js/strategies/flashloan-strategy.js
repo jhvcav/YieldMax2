@@ -405,7 +405,7 @@ export class FlashLoanStrategy extends BaseStrategy {
                         <span>Profit Estimé: $${formatNumber(opp.estimatedProfit)}</span>
                     </div>
                 </div>
-                <button class="execute-btn" onclick="flashLoanStrategy.executeArbitrage(${JSON.stringify(opp).replace(/"/g, '&quot;')})">
+                <button class="execute-btn" data-arbitrage='${JSON.stringify(opp)}'>
                     <i class="fas fa-play"></i>
                     Exécuter
                 </button>
@@ -478,6 +478,23 @@ export class FlashLoanStrategy extends BaseStrategy {
                 });
             }
         });
+
+        // 🆕 Event listeners pour les boutons d'exécution
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('.execute-btn')) {
+            const button = e.target.closest('.execute-btn');
+            const arbitrageData = button.getAttribute('data-arbitrage');
+            if (arbitrageData) {
+                try {
+                    const opportunity = JSON.parse(arbitrageData);
+                    this.executeArbitrage(opportunity);
+                } catch (error) {
+                    console.error('Erreur parsing opportunity:', error);
+                    this.notificationSystem.show('Erreur lors de l\'exécution', 'error');
+                }
+            }
+        }
+    });
     }
 
     updateConfig(key, value) {
