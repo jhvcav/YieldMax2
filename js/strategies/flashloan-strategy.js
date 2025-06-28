@@ -579,39 +579,45 @@ class FlashLoanStrategy extends BaseStrategy {
 
     // Charger les données du contrat
     async loadRealContractData() {
-        if (!this.contract || !this.walletManager.isConnected) return;
+    if (!this.contract || !this.walletManager.isConnected) return;
 
-        const ethers = window.ethers;
+    const ethers = window.ethers;
 
-        try {
-            const poolMetrics = await this.contract.getPoolMetrics();
-            const userPosition = await this.contract.getUserPosition(this.walletManager.account);
-            
-            const formatUnits = ethers.formatUnits || ethers.utils.formatUnits;
-            
-            this.contractData = {
-                totalUSDCDeposits: parseFloat(formatUnits(poolMetrics.totalUSDCDeposits, 6)),
-                totalUSDTDeposits: parseFloat(formatUnits(poolMetrics.totalUSDTDeposits, 6)),
-                totalProfits: parseFloat(formatUnits(poolMetrics.totalProfits, 6)),
-                successfulTrades: parseInt(poolMetrics.successfulTrades.toString()),
-                failedTrades: parseInt(poolMetrics.failedTrades.toString()),
-                totalVolume: parseFloat(formatUnits(poolMetrics.totalVolume, 6)),
-                userUsdcShares: parseFloat(formatUnits(userPosition.usdcShares, 6)),
-                userUsdtShares: parseFloat(formatUnits(userPosition.usdtShares, 6)),
-                userTotalProfits: parseFloat(formatUnits(userPosition.totalProfits, 6))
-            };
-
-            this.stats = {
-                totalProfit: this.contractData.totalProfits,
-                successfulTrades: this.contractData.successfulTrades,
-                failedTrades: this.contractData.failedTrades,
-                totalVolume: this.contractData.totalVolume
-            };
-
-        } catch (error) {
-            console.error('Erreur chargement données contrat:', error);
+    try {
+        // 🔧 CORRECTION: Vérifier que l'account existe
+        if (!this.walletManager.account) {
+            console.warn('⚠️ Account non disponible, skip getUserPosition');
+            return;
         }
+
+        const poolMetrics = await this.contract.getPoolMetrics();
+        const userPosition = await this.contract.getUserPosition(this.walletManager.account);
+        
+        const formatUnits = ethers.formatUnits || ethers.utils.formatUnits;
+        
+        this.contractData = {
+            totalUSDCDeposits: parseFloat(formatUnits(poolMetrics.totalUSDCDeposits, 6)),
+            totalUSDTDeposits: parseFloat(formatUnits(poolMetrics.totalUSDTDeposits, 6)),
+            totalProfits: parseFloat(formatUnits(poolMetrics.totalProfits, 6)),
+            successfulTrades: parseInt(poolMetrics.successfulTrades.toString()),
+            failedTrades: parseInt(poolMetrics.failedTrades.toString()),
+            totalVolume: parseFloat(formatUnits(poolMetrics.totalVolume, 6)),
+            userUsdcShares: parseFloat(formatUnits(userPosition.usdcShares, 6)),
+            userUsdtShares: parseFloat(formatUnits(userPosition.usdtShares, 6)),
+            userTotalProfits: parseFloat(formatUnits(userPosition.totalProfits, 6))
+        };
+
+        this.stats = {
+            totalProfit: this.contractData.totalProfits,
+            successfulTrades: this.contractData.successfulTrades,
+            failedTrades: this.contractData.failedTrades,
+            totalVolume: this.contractData.totalVolume
+        };
+
+    } catch (error) {
+        console.error('Erreur chargement données contrat:', error);
     }
+}
 
     // Charger les soldes utilisateur
     async loadUserBalances() {
