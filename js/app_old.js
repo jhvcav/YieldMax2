@@ -5,7 +5,7 @@ import { getEventBus, EVENTS } from './core/event-bus.js';
 import { getWalletManager } from './core/wallet-manager-new.js';
 import { getNotificationSystem } from './core/notification-system.js';
 import AaveStrategy from './strategies/aave-strategy.js';
-import GMXStrategy from './strategies/gmx-strategy.js';
+import FlashLoanStrategy, { initializeFlashLoanStrategy } from './strategies/flashloan-strategy.js';
 
 class YieldMax2App {
     constructor() {
@@ -94,13 +94,13 @@ class YieldMax2App {
             // Contenu
             overviewContent: document.getElementById('overview-content'),
             aaveContent: document.getElementById('aave-content'),
-            gmxContent: document.getElementById('gmx-content'),
+            flashloanContent: document.getElementById('flashloan-content'),
             
             // Containers
             positionsOverview: document.getElementById('positionsOverview'),
             recentActivity: document.getElementById('recentActivity'),
             aaveStrategyContainer: document.getElementById('aaveStrategyContainer'),
-            gmxStrategyContainer: document.getElementById('gmxStrategyContainer')
+            flashloanStrategyContainer: document.getElementById('flashloanStrategyContainer')
         };
         
         console.log('🎨 Éléments DOM initialisés');
@@ -118,13 +118,10 @@ class YieldMax2App {
             aaveStrategy.setContainer(this.elements.aaveStrategyContainer);
             this.strategies.set('aave', aaveStrategy);
             
-            // Stratégie GMX V2
-            const gmxStrategy = new GMXStrategy(this);
-            gmxStrategy.setContainer(this.elements.gmxStrategyContainer);
-            this.strategies.set('gmx', gmxStrategy);
-
-            // Exposer GMX globalement pour les callbacks UI
-            window.setGMXStrategy(gmxStrategy);
+            // Stratégie Flash Loan
+            const flashloanStrategy = new FlashLoanStrategy(this.walletManager);
+            flashloanStrategy.setContainer(this.elements.flashloanStrategyContainer);
+            this.strategies.set('flashloan', flashloanStrategy);
             
             console.log(`✅ ${this.strategies.size} stratégies chargées`);
             
@@ -231,6 +228,8 @@ class YieldMax2App {
             tab.classList.toggle('active', strategy === activeStrategy);
         });
     }
+
+   // ===== YieldMax2 - Application Principale (Suite) =====
 
     /**
      * Afficher le contenu de la stratégie
@@ -387,8 +386,8 @@ class YieldMax2App {
                         </div>
                         
                         <div class="position-footer">
-                            <div class="pnl ${parseFloat(position.earnings || position.pnl || position.rewards || '0') >= 0 ? 'positive' : 'negative'}">
-                                ${parseFloat(position.earnings || position.pnl || position.rewards || '0') >= 0 ? '+' : ''}${position.earnings || position.pnl || position.rewards || '$0.00'}
+                            <div class="pnl ${parseFloat(position.earnings || position.pnl || '0') >= 0 ? 'positive' : 'negative'}">
+                                ${parseFloat(position.earnings || position.pnl || '0') >= 0 ? '+' : ''}${position.earnings || position.pnl || '$0.00'}
                             </div>
                             <button class="view-btn" onclick="app.switchStrategy('${position.strategySlug}')">
                                 <i class="fas fa-eye"></i>
@@ -477,9 +476,8 @@ class YieldMax2App {
             'deposit': 'arrow-down',
             'withdrawal': 'arrow-up',
             'transaction': 'exchange-alt',
-            'gmx': 'chart-line',
-            'position': 'layer-group',
-            'rewards': 'gift'
+            'flashloan': 'bolt',
+            'position': 'layer-group'
         };
         return icons[type] || 'circle';
     }
@@ -495,10 +493,8 @@ class YieldMax2App {
                 return `Retrait de ${Math.abs(activity.amount)} ${activity.asset}`;
             case 'transaction':
                 return `Transaction ${activity.action}`;
-            case 'gmx':
-                return `GMX - ${activity.action}`;
-            case 'rewards':
-                return `Récompenses réclamées`;
+            case 'flashloan':
+                return `Flash Loan exécuté`;
             default:
                 return activity.action || 'Activité inconnue';
         }
@@ -531,8 +527,8 @@ class YieldMax2App {
             case 'aave':
                 this.switchStrategy('aave');
                 break;
-            case 'gmx':
-                this.switchStrategy('gmx');
+            case 'flashloan':
+                this.switchStrategy('flashloan');
                 break;
             case 'refresh':
                 this.refreshAllData();
@@ -618,11 +614,6 @@ class YieldMax2App {
         // Mettre à jour le sélecteur
         if (this.elements.networkSelect) {
             this.elements.networkSelect.value = data.newNetwork;
-        }
-
-        // Afficher une notification pour GMX si nécessaire
-        if (data.newNetwork !== 'arbitrum' && this.activeStrategy === 'gmx') {
-            this.notificationSystem.warning('⚠️ GMX V2 nécessite Arbitrum');
         }
         
         // Rafraîchir les données

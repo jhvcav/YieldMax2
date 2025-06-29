@@ -72,7 +72,7 @@ export const CONTRACTS = {
     flashloan: {
         polygon: {
             // Contrat principal Flash Loan déployé
-            arbitrage: "0x78d214d088CEe374705c0303fB360046DAf0B466",
+            arbitrage: "0xEaF562F5E0b313ed4E47D10D04a4bf4A411b9681",
             
             // Contrats Aave pour Flash Loans
             aaveAddressProvider: "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb",
@@ -164,8 +164,36 @@ export const ABIS = {
         // Événements
         "event Deposit(address indexed user, address indexed token, uint256 amount, uint256 shares, uint256 timestamp)",
         "event Withdrawal(address indexed user, address indexed token, uint256 amount, uint256 shares, uint256 timestamp)",
-        "event ArbitrageExecuted(address indexed user, address indexed asset, uint256 flashAmount, uint256 profit, uint256 userProfit, uint256 platformFee, uint256 gasUsed, uint256 timestamp)"
+        "event ArbitrageExecuted(address indexed user, address indexed asset, uint256 flashAmount, uint256 profit, uint256 userProfit, uint256 platformFee, uint256 gasUsed, uint256 timestamp)",
+        // 🆕 Nouveaux événements
+        "event TokenAddressUpdated(string indexed tokenSymbol, address indexed oldAddress, address indexed newAddress, uint256 timestamp)",
+        "event TokenConfigurationUpdated(address indexed usdc, address indexed usdt, uint256 timestamp)",
+        "event FlashLoanExecuted(address indexed asset, uint256 amount, uint256 premium, address indexed initiator, uint256 timestamp)",
+        "event PlatformFeeUpdated(uint256 oldFee, uint256 newFee)",
+        "event TrustedWalletSet(address indexed oldWallet, address indexed newWallet)",
+        "event EmergencyWithdrawal(address indexed token, uint256 amount, address indexed to, string reason, uint256 timestamp)",
+        
+        // 1. Gestion des adresses de tokens
+        "function getTokenAddresses() external view returns (address usdcAddress, address usdtAddress)",
+        "function setTokenAddresses(address _usdc, address _usdt) external",
+        "function setUSDCAddress(address _newUSDC) external",
+        "function setUSDTAddress(address _newUSDT) external",
+    
+        // 2. Informations détaillées des tokens
+        "function getTokenInfo() external view returns (address usdcAddress, string usdcSymbol, uint8 usdcDecimals, address usdtAddress, string usdtSymbol, uint8 usdtDecimals)",
+    
+        // 3. Variables publiques pour les adresses de tokens
+        "function USDC() external view returns (address)",
+        "function USDT() external view returns (address)",
+    
+        // 4. Fonctions d'autorisation de tokens
+        "function setTokenAuthorization(address token, bool authorized) external",
+    
+        // 5. Gestion d'urgence
+        "function toggleEmergencyStop() external",
+        "function ownerWithdraw(address token, uint256 amount, address to) external",
     ],
+
     
     FLASHLOAN_RECEIVER: [
         "function ADDRESSES_PROVIDER() external view returns (address)",

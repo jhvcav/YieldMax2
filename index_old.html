@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YieldMax2 - DeFi Yield Strategies</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="css/strategies/gmx-premium.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="css/strategies/flashloan-strategy.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
 </head>
 <body>
@@ -97,9 +97,9 @@
                         <span class="tab-badge" id="aaveBadge">✅</span>
                     </button>
                     
-                    <button class="tab-btn" data-strategy="gmx">
-                        <i class="fas fa-chart-line"></i>
-                        <span>GMX V2</span>
+                    <button class="tab-btn" data-strategy="flashloan">
+                        <i class="fas fa-bolt"></i>
+                        <span>Flash Loans</span>
                         <span class="tab-badge new">NEW</span>
                     </button>
                 </div>
@@ -131,9 +131,9 @@
                                     <span>Déposer sur Aave</span>
                                 </button>
                                 
-                                <button class="quick-btn" data-action="gmx">
-                                    <i class="fas fa-chart-line"></i>
-                                    <span>GMX Liquidity</span>
+                                <button class="quick-btn" data-action="flashloan">
+                                    <i class="fas fa-bolt"></i>
+                                    <span>Nouvel Arbitrage</span>
                                 </button>
                                 
                                 <button class="quick-btn" data-action="refresh">
@@ -167,13 +167,15 @@
                     <div id="aaveStrategyContainer"></div>
                 </div>
 
-                <!-- GMX V2 Strategy Content -->
-                <div id="gmx-content" class="content-panel">
+                <!-- Flash Loan Strategy Content -->
+                <div id="flashloan-content" class="content-panel">
                     <div class="strategy-header">
-                        <h2><i class="fas fa-chart-line"></i> GMX V2 Strategy</h2>
-                        <p>Trading perpétuels et liquidité GM avec APY jusqu'à 105%</p>
+                        <h2><i class="fas fa-bolt"></i> Flash Loan Arbitrage</h2>
+                        <p>Exploitez les opportunités d'arbitrage avec des emprunts flash</p>
                     </div>
-                    <div id="gmxStrategyContainer"></div>
+
+                    <!-- Flash Loan Strategy will be loaded here by flashloan-strategy.js -->
+                    <div id="flashloanStrategyContainer"></div>
                 </div>
             </section>
         </div>
@@ -204,7 +206,7 @@
     <script type="module" src="js/core/notification-system.js"></script>
     <script type="module" src="js/strategies/base-strategy.js"></script>
     <script type="module" src="js/strategies/aave-strategy.js"></script>
-    <script type="module" src="js/strategies/gmx-strategy.js"></script>
+    <script type="module" src="js/strategies/flashloan-strategy.js"></script>
     <script type="module" src="js/components/dashboard.js"></script>
     <script type="module" src="js/app.js"></script>
 </body>

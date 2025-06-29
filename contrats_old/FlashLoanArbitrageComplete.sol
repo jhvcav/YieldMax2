@@ -29,28 +29,14 @@ interface IDEXRouter {
 
 /**
  * @title FlashLoanArbitrageComplete
- * @notice Contrat Flash Loan avec tokens configurables et gestion complète
- * @dev Version améliorée avec possibilité de changer les adresses des tokens
+ * @notice Contrat complet pour Flash Loan avec gestion de dépôts, retraits et arbitrages
+ * @dev Supporte les dépôts USDC/USDT, multiple flash loans, et gestion complète des fonds
  */
 contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, ReentrancyGuard, Pausable {
     
     // ========== ÉVÉNEMENTS ==========
     
-    // 🆕 Nouveaux événements pour la gestion des tokens
-    event TokenAddressUpdated(
-        string indexed tokenSymbol,
-        address indexed oldAddress,
-        address indexed newAddress,
-        uint256 timestamp
-    );
-    
-    event TokenConfigurationUpdated(
-        address indexed usdc,
-        address indexed usdt,
-        uint256 timestamp
-    );
-    
-    // Événements existants
+    // Événements de gestion des fonds
     event Deposit(
         address indexed user,
         address indexed token,
@@ -67,6 +53,15 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         uint256 timestamp
     );
     
+    event EmergencyWithdrawal(
+        address indexed token,
+        uint256 amount,
+        address indexed to,
+        string reason,
+        uint256 timestamp
+    );
+    
+    // Événements d'arbitrage
     event ArbitrageExecuted(
         address indexed user,
         address indexed asset,
@@ -86,14 +81,36 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         uint256 timestamp
     );
     
-    event PlatformFeeUpdated(uint256 oldFee, uint256 newFee);
-    event TrustedWalletSet(address indexed oldWallet, address indexed newWallet);
-    event EmergencyWithdrawal(
-        address indexed token,
-        uint256 amount,
-        address indexed to,
-        string reason,
+    event MultipleFlashLoanExecuted(
+        address[] assets,
+        uint256[] amounts,
+        uint256[] premiums,
+        uint256 totalProfit,
         uint256 timestamp
+    );
+    
+    // Événements d'administration
+    event TrustedWalletSet(address indexed oldWallet, address indexed newWallet);
+    event PlatformFeeUpdated(uint256 oldFee, uint256 newFee);
+    event MaxDepositUpdated(address indexed token, uint256 oldMax, uint256 newMax);
+    event TokenAuthorized(address indexed token, bool authorized);
+    event DEXAuthorized(address indexed dex, bool authorized);
+    
+    // Événements de monitoring
+    event ProfitDistributed(
+        uint256 totalProfit,
+        uint256 platformShare,
+        uint256 userShare,
+        uint256 timestamp
+    );
+    
+    event PerformanceReport(
+        uint256 period,
+        uint256 totalVolume,
+        uint256 totalProfit,
+        uint256 successfulTrades,
+        uint256 failedTrades,
+        uint256 averageAPR
     );
 
     // ========== STRUCTURES ==========
@@ -142,11 +159,10 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         uint256 lastUpdateTime;
     }
 
-    // ========== VARIABLES D'ÉTAT MODIFIÉES ==========
+    // ========== VARIABLES D'ÉTAT ==========
     
-    // 🆕 Adresses de tokens configurables (plus immutable)
-    address public USDC;
-    address public USDT;
+    address public immutable USDC;
+    address public immutable USDT;
     
     mapping(address => UserPosition) public userPositions;
     mapping(address => bool) public authorizedTokens;
@@ -193,7 +209,7 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         _;
     }
 
-    // ========== CONSTRUCTEUR MODIFIÉ ==========
+    // ========== CONSTRUCTEUR ==========
     
     constructor(
         address _addressProvider,
@@ -201,15 +217,16 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         address _usdt,
         address _trustedWallet
     ) FlashLoanSimpleReceiverBase(IPoolAddressesProvider(_addressProvider)) Ownable(msg.sender) {
-        // 🆕 Utiliser les fonctions setter pour initialiser
-        _setTokenAddresses(_usdc, _usdt);
+        USDC = _usdc;
+        USDT = _usdt;
         trustedWallet = _trustedWallet;
         
-        // Configuration par défaut
+        authorizedTokens[_usdc] = true;
+        authorizedTokens[_usdt] = true;
+        
         maxDepositAmounts[_usdc] = 10000000 * 1e6;
         maxDepositAmounts[_usdt] = 10000000 * 1e6;
         
-        // DEX autorisés par défaut
         authorizedDEXs[0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff] = true; // QuickSwap
         authorizedDEXs[0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506] = true; // SushiSwap
         
@@ -217,137 +234,7 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         lastReportTime = block.timestamp;
     }
 
-    // ========== 🆕 NOUVELLES FONCTIONS DE GESTION DES TOKENS ==========
-    
-    /**
-     * @notice Met à jour les adresses des tokens USDC et USDT
-     * @param _usdc Nouvelle adresse du token USDC
-     * @param _usdt Nouvelle adresse du token USDT
-     */
-    function setTokenAddresses(address _usdc, address _usdt) external onlyOwner {
-        _setTokenAddresses(_usdc, _usdt);
-        emit TokenConfigurationUpdated(_usdc, _usdt, block.timestamp);
-    }
-    
-    /**
-     * @notice Met à jour l'adresse du token USDC uniquement
-     * @param _newUSDC Nouvelle adresse du token USDC
-     */
-    function setUSDCAddress(address _newUSDC) external onlyOwner {
-        address oldUSDC = USDC;
-        require(_newUSDC != address(0), "Adresse USDC invalide");
-        require(_newUSDC != oldUSDC, "Meme adresse USDC");
-        
-        // Vérifier que c'est bien un token ERC20 valide
-        try IERC20Extended(_newUSDC).decimals() returns (uint8 decimals) {
-            require(decimals == 6, "USDC doit avoir 6 decimales");
-        } catch {
-            revert("Adresse USDC invalide");
-        }
-        
-        // Retirer l'autorisation de l'ancienne adresse
-        authorizedTokens[oldUSDC] = false;
-        
-        // Configurer la nouvelle adresse
-        USDC = _newUSDC;
-        authorizedTokens[_newUSDC] = true;
-        maxDepositAmounts[_newUSDC] = maxDepositAmounts[oldUSDC];
-        
-        emit TokenAddressUpdated("USDC", oldUSDC, _newUSDC, block.timestamp);
-    }
-    
-    /**
-     * @notice Met à jour l'adresse du token USDT uniquement
-     * @param _newUSDT Nouvelle adresse du token USDT
-     */
-    function setUSDTAddress(address _newUSDT) external onlyOwner {
-        address oldUSDT = USDT;
-        require(_newUSDT != address(0), "Adresse USDT invalide");
-        require(_newUSDT != oldUSDT, "Meme adresse USDT");
-        
-        // Vérifier que c'est bien un token ERC20 valide
-        try IERC20Extended(_newUSDT).decimals() returns (uint8 decimals) {
-            require(decimals == 6, "USDT doit avoir 6 decimales");
-        } catch {
-            revert("Adresse USDT invalide");
-        }
-        
-        // Retirer l'autorisation de l'ancienne adresse
-        authorizedTokens[oldUSDT] = false;
-        
-        // Configurer la nouvelle adresse
-        USDT = _newUSDT;
-        authorizedTokens[_newUSDT] = true;
-        maxDepositAmounts[_newUSDT] = maxDepositAmounts[oldUSDT];
-        
-        emit TokenAddressUpdated("USDT", oldUSDT, _newUSDT, block.timestamp);
-    }
-    
-    /**
-     * @notice Fonction interne pour configurer les adresses des tokens
-     */
-    function _setTokenAddresses(address _usdc, address _usdt) internal {
-        require(_usdc != address(0), "Adresse USDC invalide");
-        require(_usdt != address(0), "Adresse USDT invalide");
-        require(_usdc != _usdt, "USDC et USDT doivent etre differents");
-        
-        // Vérifier que ce sont des tokens ERC20 valides
-        try IERC20Extended(_usdc).decimals() returns (uint8 decimalsUSDC) {
-            require(decimalsUSDC == 6, "USDC doit avoir 6 decimales");
-        } catch {
-            revert("Adresse USDC invalide");
-        }
-        
-        try IERC20Extended(_usdt).decimals() returns (uint8 decimalsUSDT) {
-            require(decimalsUSDT == 6, "USDT doit avoir 6 decimales");
-        } catch {
-            revert("Adresse USDT invalide");
-        }
-        
-        USDC = _usdc;
-        USDT = _usdt;
-        
-        authorizedTokens[_usdc] = true;
-        authorizedTokens[_usdt] = true;
-    }
-    
-    /**
-     * @notice Récupère les adresses actuelles des tokens
-     * @return usdcAddress Adresse actuelle du token USDC
-     * @return usdtAddress Adresse actuelle du token USDT
-     */
-    function getTokenAddresses() external view returns (address usdcAddress, address usdtAddress) {
-        return (USDC, USDT);
-    }
-    
-    /**
-    * @notice Récupère les informations détaillées des tokens
-    * @return usdcAddress Adresse du token USDC
-    * @return usdcSymbol Symbole du token USDC
-    * @return usdcDecimals Nombre de décimales USDC
-    * @return usdtAddress Adresse du token USDT
-    * @return usdtSymbol Symbole du token USDT
-    * @return usdtDecimals Nombre de décimales USDT
-    */
-    function getTokenInfo() external view returns (
-        address usdcAddress,
-        string memory usdcSymbol,
-        uint8 usdcDecimals,
-        address usdtAddress,
-        string memory usdtSymbol,
-        uint8 usdtDecimals
-    ) {
-        return (
-            USDC,
-            IERC20Extended(USDC).symbol(),
-            IERC20Extended(USDC).decimals(),
-            USDT,
-            IERC20Extended(USDT).symbol(),
-            IERC20Extended(USDT).decimals()
-        );
-    }
-
-    // ========== FONCTIONS EXISTANTES (IDENTIQUES) ==========
+    // ========== FONCTIONS DE DÉPÔT ==========
     
     function deposit(address token, uint256 amount) 
         external 
@@ -388,7 +275,7 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         
         emit Deposit(msg.sender, token, amount, shares, block.timestamp);
     }
-
+    
     function calculateShares(address token, uint256 amount) public view returns (uint256 shares) {
         if (token == USDC) {
             if (poolMetrics.totalUSDCShares == 0) {
@@ -404,6 +291,90 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         revert("Token non supporte");
     }
 
+    // ========== FONCTIONS DE RETRAIT ==========
+    
+    function withdraw(address token, uint256 shares)
+        external
+        nonReentrant
+        onlyAuthorizedToken(token)
+        validAmount(shares)
+    {
+        UserPosition storage position = userPositions[msg.sender];
+        
+        uint256 userShares;
+        uint256 totalShares;
+        
+        if (token == USDC) {
+            userShares = position.usdcShares;
+            totalShares = poolMetrics.totalUSDCShares;
+        } else if (token == USDT) {
+            userShares = position.usdtShares;
+            totalShares = poolMetrics.totalUSDTShares;
+        } else {
+            revert("Token non supporte");
+        }
+        
+        require(shares <= userShares, "Parts insuffisantes");
+        require(totalShares > 0, "Aucune part en circulation");
+        
+        uint256 currentBalance = IERC20(token).balanceOf(address(this));
+        uint256 withdrawAmount = (shares * currentBalance) / totalShares;
+        
+        require(withdrawAmount > 0, "Montant de retrait nul");
+        require(withdrawAmount <= currentBalance, "Liquidite insuffisante");
+        
+        if (token == USDC) {
+            position.usdcShares -= shares;
+            poolMetrics.totalUSDCShares -= shares;
+            poolMetrics.totalUSDCDeposits = poolMetrics.totalUSDCDeposits > withdrawAmount 
+                ? poolMetrics.totalUSDCDeposits - withdrawAmount : 0;
+        } else {
+            position.usdtShares -= shares;
+            poolMetrics.totalUSDTShares -= shares;
+            poolMetrics.totalUSDTDeposits = poolMetrics.totalUSDTDeposits > withdrawAmount 
+                ? poolMetrics.totalUSDTDeposits - withdrawAmount : 0;
+        }
+        
+        position.totalWithdrawn += withdrawAmount;
+        position.withdrawalCount++;
+        
+        require(IERC20(token).transfer(msg.sender, withdrawAmount), "Transfert echoue");
+        
+        emit Withdrawal(msg.sender, token, withdrawAmount, shares, block.timestamp);
+    }
+    
+    function ownerWithdraw(address token, uint256 amount, address to)
+        external
+        onlyOwner
+        validAmount(amount)
+    {
+        require(to != address(0), "Adresse invalide");
+        
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        require(amount <= balance, "Solde insuffisant");
+        
+        require(IERC20(token).transfer(to, amount), "Transfert echoue");
+        
+        emit EmergencyWithdrawal(token, amount, to, "Owner withdrawal", block.timestamp);
+    }
+    
+    function trustedWalletWithdraw(address token, uint256 amount)
+        external
+        validAmount(amount)
+    {
+        require(msg.sender == trustedWallet, "Seul le wallet de confiance");
+        require(trustedWallet != address(0), "Wallet de confiance non defini");
+        
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        require(amount <= balance, "Solde insuffisant");
+        
+        require(IERC20(token).transfer(trustedWallet, amount), "Transfert echoue");
+        
+        emit EmergencyWithdrawal(token, amount, trustedWallet, "Trusted wallet withdrawal", block.timestamp);
+    }
+
+    // ========== FONCTIONS FLASH LOAN ==========
+    
     function executeArbitrage(ArbitrageParams calldata params) 
         external 
         nonReentrant 
@@ -453,7 +424,11 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         uint256 gasStart = gasleft();
         FlashLoanData memory flashData = abi.decode(params, (FlashLoanData));
         
-        uint256 profit = _performArbitrage(flashData.params, amount);
+        uint256 profit;
+        if (flashData.flashLoanType == 0) {
+            profit = _performArbitrage(flashData.params, amount);
+        }
+        
         _handleProfitDistribution(asset, amount, premium, profit, flashData.user, gasStart);
         
         emit FlashLoanExecuted(asset, amount, premium, flashData.user, block.timestamp);
@@ -502,6 +477,7 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         poolMetrics.lastUpdateTime = block.timestamp;
         
         emit ArbitrageExecuted(user, asset, amount, profit, userProfit, platformFee + trustedWalletFee, gasUsed, block.timestamp);
+        emit ProfitDistributed(profit, platformFee + trustedWalletFee, userProfit, block.timestamp);
     }
 
     function _performArbitrage(
@@ -684,10 +660,12 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
     
     function setTokenAuthorization(address token, bool authorized) external onlyOwner {
         authorizedTokens[token] = authorized;
+        emit TokenAuthorized(token, authorized);
     }
     
     function setDEXAuthorization(address dex, bool authorized) external onlyOwner {
         authorizedDEXs[dex] = authorized;
+        emit DEXAuthorized(dex, authorized);
     }
     
     function toggleEmergencyStop() external onlyOwner {
@@ -697,21 +675,6 @@ contract FlashLoanArbitrageComplete is FlashLoanSimpleReceiverBase, Ownable, Ree
         } else {
             _unpause();
         }
-    }
-
-    function ownerWithdraw(address token, uint256 amount, address to)
-        external
-        onlyOwner
-        validAmount(amount)
-    {
-        require(to != address(0), "Adresse invalide");
-        
-        uint256 balance = IERC20(token).balanceOf(address(this));
-        require(amount <= balance, "Solde insuffisant");
-        
-        require(IERC20(token).transfer(to, amount), "Transfert echoue");
-        
-        emit EmergencyWithdrawal(token, amount, to, "Owner withdrawal", block.timestamp);
     }
 
     // ========== FONCTIONS UTILITAIRES ==========
