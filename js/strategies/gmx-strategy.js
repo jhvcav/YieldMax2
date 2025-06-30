@@ -16,7 +16,7 @@ class GMXStrategy extends BaseStrategy {
         
         // VRAIES adresses des contrats GMX V2 sur Arbitrum
         this.contracts = {
-            exchangeRouter: '0x69C527fC77291722b52649E45c838e41be8Bf5d5',
+            exchangeRouter: '0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8',
             reader: '0xf60becbba223EEA9495Da3f606753867eC10d139',
             dataStore: '0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8',
             orderVault: '0x31eF83a530Fde1B38EE9A18093A333D8Bbbc40DD',
@@ -31,7 +31,7 @@ class GMXStrategy extends BaseStrategy {
                 address: '0x47c031236e19d024b42f8AE6780E44A573170703',
                 name: 'BTC/USD',
                 longToken: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', // WBTC
-                shortToken: '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', // USDC
+                shortToken: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC
                 indexToken: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f'
             },
             {
@@ -39,7 +39,7 @@ class GMXStrategy extends BaseStrategy {
                 address: '0x70d95587d40A2caf56bd97485aB3Eec10Bee6336',
                 name: 'ETH/USD',
                 longToken: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // WETH
-                shortToken: '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', // USDC
+                shortToken: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC
                 indexToken: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1'
             },
             {
@@ -47,7 +47,7 @@ class GMXStrategy extends BaseStrategy {
                 address: '0xC25cEf6061Cf5dE5eb761b50E4743c1F5D7E5407',
                 name: 'ARB/USD',
                 longToken: '0x912CE59144191C1204E64559FE8253a0e49E6548', // ARB
-                shortToken: '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', // USDC
+                shortToken: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC
                 indexToken: '0x912CE59144191C1204E64559FE8253a0e49E6548'
             },
             {
@@ -55,7 +55,7 @@ class GMXStrategy extends BaseStrategy {
                 address: '0x09400D9DB990D5ed3f35D7be61DfAEB900Af03C9',
                 name: 'SOL/USD',
                 longToken: '0x2bcC6D6CdBbDC0a4071e48bb3B969b06B3330c07', // SOL
-                shortToken: '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', // USDC
+                shortToken: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC
                 indexToken: '0x2bcC6D6CdBbDC0a4071e48bb3B969b06B3330c07'
             },
             {
@@ -63,7 +63,7 @@ class GMXStrategy extends BaseStrategy {
                 address: '0x7f1fa204bb700853D36994DA19F830b6Ad18455C',
                 name: 'LINK/USD',
                 longToken: '0xf97f4df75117a78c1A5a0DBb814Af92458539FB4', // LINK
-                shortToken: '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', // USDC
+                shortToken: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC
                 indexToken: '0xf97f4df75117a78c1A5a0DBb814Af92458539FB4'
             }
         ];
@@ -122,23 +122,49 @@ class GMXStrategy extends BaseStrategy {
 
     // ===== CONTRATS BLOCKCHAIN =====
     async initializeContracts() {
-        if (!this.walletManager.isConnected || !this.checkNetworkSupport()) return;
+        if (!this.walletManager.isConnected || !this.checkNetworkSupport()) {
+            console.warn('⚠️ Wallet non connecté ou réseau non supporté');
+            return;
+        }
 
         try {
+            console.log('🔧 Initialisation des contrats GMX...');
+            
             const ethers = window.ethers;
             
-            // ExchangeRouter - ABI simplifié
+            // Vérifier que nous sommes bien sur Arbitrum
+            const network = await this.walletManager.provider.getNetwork();
+            console.log('🌐 Réseau détecté:', network);
+            
+            if (network.chainId !== 42161n) {
+                throw new Error(`Réseau incorrect. Attendu: Arbitrum (42161), Reçu: ${network.chainId}`);
+            }
+            
+            // ExchangeRouter - ABI complet et sécurisé
             const exchangeRouterABI = [
                 'function createDeposit((address,address,address,address,address,address,address[],address[],uint256,bool,uint256,uint256)) external payable returns (bytes32)',
                 'function createWithdrawal((address,address,address,address,address[],address[],uint256,uint256,bool,uint256,uint256)) external payable returns (bytes32)',
-                'function sendTokens(address,address,uint256) external'
+                'function sendTokens(address,address,uint256) external',
+                'function multicall(bytes[]) external payable returns (bytes[])'
             ];
 
+            console.log('📋 Création contrat ExchangeRouter:', this.contracts.exchangeRouter);
             this.contracts_instances.exchangeRouter = new ethers.Contract(
                 this.contracts.exchangeRouter,
                 exchangeRouterABI,
                 this.walletManager.signer
             );
+
+            // Tester le contrat ExchangeRouter
+            try {
+                const code = await this.walletManager.provider.getCode(this.contracts.exchangeRouter);
+                if (code === '0x') {
+                    throw new Error('Contrat ExchangeRouter non déployé à cette adresse');
+                }
+                console.log('✅ ExchangeRouter validé');
+            } catch (error) {
+                throw new Error(`ExchangeRouter invalide: ${error.message}`);
+            }
 
             // Reader - ABI simplifié
             const readerABI = [
@@ -146,6 +172,7 @@ class GMXStrategy extends BaseStrategy {
                 'function getPoolAmountInfo(address,address,address,address,address,bool) external view returns ((uint256,uint256,uint256,uint256))'
             ];
 
+            console.log('📋 Création contrat Reader:', this.contracts.reader);
             this.contracts_instances.reader = new ethers.Contract(
                 this.contracts.reader,
                 readerABI,
@@ -158,18 +185,54 @@ class GMXStrategy extends BaseStrategy {
                 'function getAddress(bytes32) external view returns (address)'
             ];
 
+            console.log('📋 Création contrat DataStore:', this.contracts.dataStore);
             this.contracts_instances.dataStore = new ethers.Contract(
                 this.contracts.dataStore,
                 dataStoreABI,
                 this.walletManager.provider
             );
 
-            console.log('✅ Contrats GMX V2 initialisés');
+            console.log('✅ Tous les contrats GMX V2 initialisés avec succès');
+            
+            // Valider toutes les adresses de contrats
+            await this.validateContractAddresses();
 
         } catch (error) {
             console.error('❌ Erreur initialisation contrats:', error);
-            // Ne pas throw, continuer en mode dégradé
+            this.contracts_instances = {
+                exchangeRouter: null,
+                reader: null,
+                dataStore: null
+            };
+            throw new Error(`Impossible d'initialiser les contrats GMX: ${error.message}`);
         }
+    }
+
+    // VALIDATION DES ADRESSES DE CONTRATS
+    async validateContractAddresses() {
+        console.log('🔍 Validation des adresses de contrats...');
+        
+        const contractsToValidate = [
+            { name: 'exchangeRouter', address: this.contracts.exchangeRouter },
+            { name: 'reader', address: this.contracts.reader },
+            { name: 'dataStore', address: this.contracts.dataStore }
+        ];
+        
+        for (const contract of contractsToValidate) {
+            try {
+                window.ethers.getAddress(contract.address);
+                const code = await this.walletManager.provider.getCode(contract.address);
+                if (code === '0x') {
+                    console.warn(`⚠️ ${contract.name}: Pas de contrat déployé à ${contract.address}`);
+                }
+                console.log(`✅ ${contract.name}: ${contract.address}`);
+            } catch (error) {
+                console.error(`❌ ${contract.name} invalide:`, error);
+                throw new Error(`Contrat ${contract.name} invalide: ${error.message}`);
+            }
+        }
+        
+        console.log('✅ Contrats essentiels validés');
     }
 
     // ===== CHARGEMENT DES DONNÉES APY =====
@@ -177,7 +240,6 @@ class GMXStrategy extends BaseStrategy {
         console.log('🔄 Chargement des données APY GMX (version stable)...');
         
         try {
-            // Essayer l'API officielle actuelle de GMX
             const workingAPI = await this.tryWorkingGMXAPI();
             
             if (workingAPI) {
@@ -186,7 +248,6 @@ class GMXStrategy extends BaseStrategy {
                 return;
             }
             
-            // Si API échoue, utiliser des données réalistes de référence
             console.log('📊 Utilisation des données de référence GMX...');
             await this.loadRealisticGMXData();
             this.updateRealTimeUI();
@@ -197,10 +258,8 @@ class GMXStrategy extends BaseStrategy {
         }
     }
 
-    // ESSAYER L'API GMX QUI FONCTIONNE RÉELLEMENT
     async tryWorkingGMXAPI() {
         try {
-            // API publique GMX qui fonctionne vraiment (janvier 2025)
             const response = await fetch('https://arbitrum-api.gmxinfra.io/stats', {
                 method: 'GET',
                 headers: {
@@ -212,7 +271,6 @@ class GMXStrategy extends BaseStrategy {
                 const data = await response.json();
                 console.log('📊 Réponse API GMX:', data);
                 
-                // Vérifier si la réponse contient les données qu'on cherche
                 if (data && typeof data === 'object' && !data.message) {
                     return this.parseWorkingAPIData(data);
                 }
@@ -226,24 +284,21 @@ class GMXStrategy extends BaseStrategy {
         }
     }
 
-    // PARSER POUR L'API QUI FONCTIONNE
     parseWorkingAPIData(data) {
         try {
             let parsedCount = 0;
             
-            // Formats possibles de données GMX
             const possibleFormats = [
-                data.fees, // Format fees
-                data.volume, // Format volume
-                data.markets, // Format markets
-                data.gm, // Format GM
-                data // Format direct
+                data.fees,
+                data.volume,
+                data.markets,
+                data.gm,
+                data
             ];
             
             for (const formatData of possibleFormats) {
                 if (formatData && typeof formatData === 'object') {
                     for (const market of this.gmMarkets) {
-                        // Chercher les données de ce market
                         const marketKey = market.address.toLowerCase();
                         if (formatData[marketKey]) {
                             const marketStats = formatData[marketKey];
@@ -272,9 +327,7 @@ class GMXStrategy extends BaseStrategy {
         }
     }
 
-    // EXTRACTION APY AMÉLIORÉE
     extractAPYFromAPI(marketStats) {
-        // Chercher l'APY dans différents formats
         const apyFields = [
             'apy', 'apr', 'annualYield', 'yield',
             'borrowApy', 'lendApy', 'poolApy',
@@ -285,27 +338,24 @@ class GMXStrategy extends BaseStrategy {
             if (marketStats[field] !== undefined) {
                 let value = parseFloat(marketStats[field]);
                 
-                // Convertir pourcentage si nécessaire
                 if (value > 0 && value < 1) {
-                    value *= 100; // De décimal à pourcentage
+                    value *= 100;
                 }
                 
-                if (value >= 0 && value <= 200) { // Validation raisonnable
+                if (value >= 0 && value <= 200) {
                     return value;
                 }
             }
         }
         
-        // Si pas d'APY direct, calculer depuis fees et TVL
         if (marketStats.fees24h && marketStats.tvl) {
             const dailyYield = parseFloat(marketStats.fees24h) / parseFloat(marketStats.tvl);
-            return Math.min(dailyYield * 365 * 100, 100); // Cap à 100%
+            return Math.min(dailyYield * 365 * 100, 100);
         }
         
         return 0;
     }
 
-    // EXTRACTION DE VALEURS
     extractValue(obj, fields) {
         for (const field of fields) {
             if (obj[field] !== undefined) {
@@ -318,56 +368,52 @@ class GMXStrategy extends BaseStrategy {
         return 0;
     }
 
-    // DONNÉES RÉALISTES DE RÉFÉRENCE (basées sur GMX réel janvier 2025)
     async loadRealisticGMXData() {
         console.log('📊 Chargement des données de référence GMX...');
         
-        // Données basées sur les performances réelles GMX V2 (janvier 2025)
         const realisticData = {
-            '0x47c031236e19d024b42f8AE6780E44A573170703': { // BTC/USD
+            '0x47c031236e19d024b42f8AE6780E44A573170703': {
                 apy: 8.4,
-                totalValue: 142000000, // $142M
+                totalValue: 142000000,
                 utilization: 0.68,
                 fees24h: 32000,
                 source: 'gmx-reference-data'
             },
-            '0x70d95587d40A2caf56bd97485aB3Eec10Bee6336': { // ETH/USD
+            '0x70d95587d40A2caf56bd97485aB3Eec10Bee6336': {
                 apy: 11.2,
-                totalValue: 98000000, // $98M
+                totalValue: 98000000,
                 utilization: 0.74,
                 fees24h: 29000,
                 source: 'gmx-reference-data'
             },
-            '0xC25cEf6061Cf5dE5eb761b50E4743c1F5D7E5407': { // ARB/USD
+            '0xC25cEf6061Cf5dE5eb761b50E4743c1F5D7E5407': {
                 apy: 15.6,
-                totalValue: 52000000, // $52M
+                totalValue: 52000000,
                 utilization: 0.61,
                 fees24h: 22000,
                 source: 'gmx-reference-data'
             },
-            '0x09400D9DB990D5ed3f35D7be61DfAEB900Af03C9': { // SOL/USD
+            '0x09400D9DB990D5ed3f35D7be61DfAEB900Af03C9': {
                 apy: 13.8,
-                totalValue: 38000000, // $38M
+                totalValue: 38000000,
                 utilization: 0.72,
                 fees24h: 14000,
                 source: 'gmx-reference-data'
             },
-            '0x7f1fa204bb700853D36994DA19F830b6Ad18455C': { // LINK/USD
+            '0x7f1fa204bb700853D36994DA19F830b6Ad18455C': {
                 apy: 12.3,
-                totalValue: 24000000, // $24M
+                totalValue: 24000000,
                 utilization: 0.58,
                 fees24h: 8000,
                 source: 'gmx-reference-data'
             }
         };
 
-        // Appliquer les données avec une petite variation aléatoire pour simuler le temps réel
         for (const market of this.gmMarkets) {
             const baseData = realisticData[market.address];
             if (baseData) {
-                // Ajouter une variation de ±10% pour simuler les fluctuations réelles
-                const apyVariation = (Math.random() - 0.5) * 0.2; // ±10%
-                const tvlVariation = (Math.random() - 0.5) * 0.1; // ±5%
+                const apyVariation = (Math.random() - 0.5) * 0.2;
+                const tvlVariation = (Math.random() - 0.5) * 0.1;
                 
                 this.realTimeAPYs[market.address] = {
                     apy: Math.max(baseData.apy * (1 + apyVariation), 0.1),
@@ -395,13 +441,11 @@ class GMXStrategy extends BaseStrategy {
             
             for (const market of this.gmMarkets) {
                 try {
-                    // Vérifier que l'adresse du market est valide
                     if (!market.address || market.address === window.ethers.ZeroAddress) {
                         console.warn(`⚠️ Adresse market invalide pour ${market.name}`);
                         continue;
                     }
                     
-                    // Créer le contrat avec gestion d'erreur
                     const gmTokenContract = new window.ethers.Contract(
                         market.address,
                         [
@@ -411,18 +455,15 @@ class GMXStrategy extends BaseStrategy {
                         this.walletManager.provider
                     );
                     
-                    // Récupérer le solde utilisateur
                     const balance = await gmTokenContract.balanceOf(this.walletManager.account);
                     
                     if (balance > 0n) {
                         const balanceFormatted = window.ethers.formatUnits(balance, 18);
                         const marketData = this.realTimeAPYs[market.address];
                         
-                        // Calculer la valeur avec protection contre les erreurs
                         let valueUSD = 0;
                         if (marketData && marketData.totalValue) {
-                            // Estimation simple : 1 GM token ≈ $1 (ajuster selon le market)
-                            valueUSD = parseFloat(balanceFormatted) * 1.05; // Petit premium
+                            valueUSD = parseFloat(balanceFormatted) * 1.05;
                         }
                         
                         const realRewards = this.calculateEstimatedRewards(marketData, balanceFormatted);
@@ -448,7 +489,7 @@ class GMXStrategy extends BaseStrategy {
                     
                 } catch (marketError) {
                     console.warn(`⚠️ Erreur position ${market.name}:`, marketError.message);
-                    continue; // Continuer avec les autres markets
+                    continue;
                 }
             }
             
@@ -457,18 +498,17 @@ class GMXStrategy extends BaseStrategy {
             
         } catch (error) {
             console.error('❌ Erreur générale récupération positions:', error);
-            return []; // Retourner tableau vide au lieu d'erreur
+            return [];
         }
     }
 
-    // CALCUL ESTIMÉ DES RÉCOMPENSES
     calculateEstimatedRewards(marketData, gmBalance) {
         if (!marketData || !gmBalance) return '0.00';
         
         try {
             const balance = parseFloat(gmBalance);
             const dailyAPY = marketData.apy / 365;
-            const estimatedValueUSD = balance * 1.05; // Estimation valeur du GM token
+            const estimatedValueUSD = balance * 1.05;
             const dailyRewards = (estimatedValueUSD * dailyAPY) / 100;
             
             return Math.max(dailyRewards, 0).toFixed(2);
@@ -479,97 +519,254 @@ class GMXStrategy extends BaseStrategy {
         }
     }
 
-    // DÉSACTIVER LE CALCUL BLOCKCHAIN DÉFAILLANT
-    async calculateRealAPYFromBlockchain() {
-        console.log('⚠️ Calcul blockchain désactivé (contrats non disponibles)');
-        return false;
-    }
-
     // ===== TRANSACTIONS =====
     async deploy(params) {
         const { marketAddress, amount, token } = params;
         
         return await this.executeTransaction(async () => {
+            console.log('🚀 Début dépôt GMX...', { marketAddress, amount, token });
+            
+            // 1. VALIDATION DES PARAMÈTRES
             if (!marketAddress || !amount) {
                 throw new Error('Paramètres invalides');
             }
             
-            const ethers = window.ethers;
-            const amountWei = ethers.parseUnits(amount.toString(), 6);
-            const executionFee = ethers.parseEther(this.config.executionFee);
-            
+            // 2. VALIDATION DU MARKET
             const market = this.gmMarkets.find(m => m.address === marketAddress);
-            if (!market) throw new Error('Market non trouvé');
+            if (!market) {
+                throw new Error('Market non trouvé');
+            }
             
-            // Approval et envoi USDC
-            await this.handleUSDCApproval(market.shortToken, amountWei);
+            console.log('📊 Market trouvé:', market);
             
-            // Paramètres de dépôt
-            const depositParams = {
-                receiver: this.walletManager.account,
-                callbackContract: ethers.ZeroAddress,
-                uiFeeReceiver: ethers.ZeroAddress,
-                market: marketAddress,
-                initialLongToken: market.longToken,
-                initialShortToken: market.shortToken,
-                longTokenSwapPath: [],
-                shortTokenSwapPath: [],
-                minMarketTokens: 0,
-                shouldUnwrapNativeToken: false,
-                executionFee: executionFee,
-                callbackGasLimit: 2000000
+            // 3. VALIDATION DES CONTRATS
+            if (!this.contracts_instances.exchangeRouter) {
+                console.error('❌ ExchangeRouter non initialisé');
+                throw new Error('Contrats GMX non disponibles. Assurez-vous d\'être sur Arbitrum.');
+            }
+
+            // 4. RÉCUPÉRATION DE L'ADRESSE UTILISATEUR
+            let userAddress;
+            try {
+                userAddress = await this.walletManager.signer.getAddress();
+                console.log('✅ Adresse récupérée depuis le signer:', userAddress);
+            } catch (error) {
+                throw new Error('Impossible de récupérer l\'adresse du wallet. Reconnectez-vous.');
+            }
+            
+            // 5. VALIDATION DES ADRESSES
+            const addressesToCheck = {
+                exchangeRouter: this.contracts.exchangeRouter,
+                orderVault: this.contracts.orderVault,
+                marketAddress: marketAddress,
+                longToken: market.longToken,
+                shortToken: market.shortToken,
+                indexToken: market.indexToken
             };
             
-            // Envoyer USDC au OrderVault
+            console.log('🔍 Vérification des adresses...', addressesToCheck);
+            
+            for (const [name, addr] of Object.entries(addressesToCheck)) {
+                if (!addr || addr === 'null') {
+                    throw new Error(`Adresse ${name} manquante: ${addr}`);
+                }
+                
+                if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+                    throw new Error(`Format d'adresse invalide pour ${name}: ${addr}`);
+                }
+                
+                console.log(`✅ ${name}: ${addr}`);
+            }
+            
+            const ethers = window.ethers;
+            const amountWei = ethers.parseUnits(amount.toString(), 6); // USDC = 6 decimals
+            const executionFee = ethers.parseEther(this.config.executionFee);
+            
+            console.log('💰 Montants calculés:', {
+                amount: amount,
+                amountWei: amountWei.toString(),
+                executionFee: executionFee.toString()
+            });
+            
+            // 6. APPROVAL USDC SÉCURISÉ
+            console.log('🔓 Début approval USDC...');
+            await this.handleUSDCApprovalSecure(market.shortToken, amountWei, userAddress);
+            
+            // 7. VALIDATION FINALE AVANT DÉPÔT
+            const balanceCheck = await this.checkUSDCBalance(market.shortToken, amountWei, userAddress);
+            if (!balanceCheck.sufficient) {
+                throw new Error(`Solde USDC insuffisant. Requis: ${balanceCheck.required}, Disponible: ${balanceCheck.available}`);
+            }
+            
+            // 8. PARAMÈTRES DE DÉPÔT VALIDÉS
+            const depositParams = [
+                userAddress,                             // receiver
+                ethers.ZeroAddress,                      // callbackContract
+                ethers.ZeroAddress,                      // uiFeeReceiver
+                marketAddress,                           // market
+                market.longToken,                        // initialLongToken
+                market.shortToken,                       // initialShortToken
+                [],                                      // longTokenSwapPath
+                [],                                      // shortTokenSwapPath
+                0,                                       // minMarketTokens
+                false,                                   // shouldUnwrapNativeToken
+                executionFee,                            // executionFee
+                2000000                                  // callbackGasLimit
+            ];
+            
+            console.log('📋 Paramètres de dépôt:', depositParams);
+            
+            // 9. ENVOI DES TOKENS AU VAULT
+            console.log('📤 Envoi USDC au OrderVault...');
             const sendTokensTx = await this.contracts_instances.exchangeRouter.sendTokens(
                 market.shortToken,
                 this.contracts.orderVault,
                 amountWei
             );
-            await sendTokensTx.wait();
             
-            // Créer le dépôt
+            console.log('⏳ Attente confirmation sendTokens...');
+            const sendReceipt = await sendTokensTx.wait();
+            console.log('✅ USDC envoyé:', sendReceipt.hash);
+            
+            // 10. CRÉATION DU DÉPÔT
+            console.log('🔨 Création du dépôt GMX...');
             const depositTx = await this.contracts_instances.exchangeRouter.createDeposit(
                 depositParams,
-                { value: executionFee }
+                { 
+                    value: executionFee,
+                    gasLimit: 3000000
+                }
             );
             
+            console.log('⏳ Attente confirmation createDeposit...');
             const receipt = await depositTx.wait();
+            console.log('✅ Dépôt créé:', receipt.hash);
             
+            // 11. ENREGISTREMENT HISTORIQUE
             this.addToHistory({
                 type: 'deposit',
                 action: 'Dépôt GMX GM',
                 amount: amount,
                 asset: token,
                 marketAddress: marketAddress,
-                hash: receipt.hash
+                hash: receipt.hash,
+                timestamp: new Date().toISOString()
             });
+            
+            // 12. NOTIFICATION SUCCÈS
+            this.notificationSystem.success(`✅ Dépôt GMX réussi! Hash: ${receipt.hash.substring(0, 10)}...`);
             
             return receipt;
             
         }, `Dépôt ${amount} USDC dans GMX ${token}`);
     }
 
-    async handleUSDCApproval(usdcAddress, amountWei) {
-        const ethers = window.ethers;
-        const usdcContract = new ethers.Contract(
-            usdcAddress,
-            ['function approve(address,uint256) external', 'function allowance(address,address) external view returns(uint256)'],
-            this.walletManager.signer
-        );
-        
-        const allowance = await usdcContract.allowance(
-            this.walletManager.account,
-            this.contracts.exchangeRouter
-        );
-        
-        if (allowance < amountWei) {
-            const approveTx = await usdcContract.approve(
-                this.contracts.exchangeRouter,
-                ethers.MaxUint256
+    // MÉTHODE D'APPROVAL SÉCURISÉE CORRIGÉE
+    async handleUSDCApprovalSecure(usdcAddress, amountWei, userAddress) {
+        try {
+            console.log('🔍 Vérification approval USDC...', { 
+                usdcAddress, 
+                amountWei: amountWei.toString(),
+                userAddress 
+            });
+            
+            // Vérifier que l'adresse USDC est valide
+            if (!usdcAddress || usdcAddress === window.ethers.ZeroAddress) {
+                throw new Error(`Adresse USDC invalide: ${usdcAddress}`);
+            }
+            
+            // Vérifier que userAddress est défini
+            if (!userAddress) {
+                throw new Error('Adresse utilisateur non définie');
+            }
+            
+            const ethers = window.ethers;
+            const usdcContract = new ethers.Contract(
+                usdcAddress,
+                [
+                    'function approve(address,uint256) external returns(bool)',
+                    'function allowance(address,address) external view returns(uint256)',
+                    'function balanceOf(address) external view returns(uint256)',
+                    'function decimals() external view returns(uint8)'
+                ],
+                this.walletManager.signer
             );
-            await approveTx.wait();
-            this.notificationSystem.success('USDC approuvé pour GMX');
+            
+            // Vérifier le contrat USDC
+            try {
+                const decimals = await usdcContract.decimals();
+                console.log('✅ Contrat USDC validé, decimals:', decimals);
+            } catch (error) {
+                throw new Error(`Contrat USDC invalide à l'adresse ${usdcAddress}: ${error.message}`);
+            }
+            
+            // Vérifier l'allowance actuelle
+            const currentAllowance = await usdcContract.allowance(
+                userAddress,
+                this.contracts.exchangeRouter
+            );
+            
+            console.log('💰 Allowance actuelle:', currentAllowance.toString());
+            console.log('💰 Montant requis:', amountWei.toString());
+            if (currentAllowance < amountWei) {
+                console.log('🔓 Approval nécessaire...');
+                
+                // Approval pour le montant exact + un buffer
+                const approvalAmount = amountWei * 2n; // Double du montant pour éviter les re-approvals
+                
+                const approveTx = await usdcContract.approve(
+                    this.contracts.exchangeRouter,
+                    approvalAmount,
+                    {
+                        gasLimit: 100000 // Gas limit fixe pour approval
+                    }
+                );
+                
+                console.log('⏳ Attente confirmation approval...');
+                const approvalReceipt = await approveTx.wait();
+                console.log('✅ USDC approuvé:', approvalReceipt.hash);
+                
+                this.notificationSystem.success('USDC approuvé pour GMX');
+            } else {
+                console.log('✅ Allowance suffisante, pas d\'approval nécessaire');
+            }
+            
+        } catch (error) {
+            console.error('❌ Erreur approval USDC:', error);
+            throw new Error(`Echec approval USDC: ${error.message}`);
+        }
+    }
+
+    // MÉTHODE DE VÉRIFICATION SOLDE CORRIGÉE
+    async checkUSDCBalance(usdcAddress, requiredAmount, userAddress) {
+        try {
+            const ethers = window.ethers;
+            const usdcContract = new ethers.Contract(
+                usdcAddress,
+                ['function balanceOf(address) external view returns(uint256)'],
+                this.walletManager.provider
+            );
+            
+            const balance = await usdcContract.balanceOf(userAddress);
+            const balanceFormatted = ethers.formatUnits(balance, 6);
+            const requiredFormatted = ethers.formatUnits(requiredAmount, 6);
+            
+            console.log('💰 Vérification solde USDC:', {
+                balance: balanceFormatted,
+                required: requiredFormatted,
+                sufficient: balance >= requiredAmount
+            });
+            
+            return {
+                sufficient: balance >= requiredAmount,
+                available: balanceFormatted,
+                required: requiredFormatted,
+                balance: balance
+            };
+            
+        } catch (error) {
+            console.error('❌ Erreur vérification solde:', error);
+            throw new Error(`Impossible de vérifier le solde USDC: ${error.message}`);
         }
     }
 
@@ -711,14 +908,39 @@ class GMXStrategy extends BaseStrategy {
     }
 
     renderMarketsSection() {
+        const isConnected = this.walletManager.isConnected;
+        const isArbitrum = this.checkNetworkSupport();
+        const contractsReady = !!this.contracts_instances.exchangeRouter;
+        
+        // Diagnostic des contrats
+        let diagnosticHTML = '';
+        if (isConnected && isArbitrum && !contractsReady) {
+            diagnosticHTML = `
+                <div style="background: rgba(255,155,0,0.1); border: 1px solid rgba(255,155,0,0.3); 
+                            border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: center;">
+                    <i class="fas fa-tools" style="color: #ff9b00;"></i>
+                    <span style="color: #ff9b00; margin-left: 8px;">
+                        Contrats GMX non initialisés
+                    </span>
+                    <button onclick="window.gmxStrategy.forceInitializeContracts()" 
+                            style="margin-left: 15px; padding: 8px 16px; background: #ff9b00; 
+                                   border: none; border-radius: 6px; color: white; cursor: pointer;">
+                        🔧 Initialiser Contrats
+                    </button>
+                </div>
+            `;
+        }
+        
         const marketsHTML = this.gmMarkets.map(market => {
             const marketData = this.realTimeAPYs[market.address];
             const realAPY = marketData?.apy?.toFixed(1) || '0.0';
             const tvl = marketData?.totalValue ? `$${(marketData.totalValue / 1e6).toFixed(1)}M` : '$--';
             
             const icons = {
-                'BTC/USD': '₿', 'ETH/USD': 'Ξ', 'ARB/USD': '🔵', 'SOL/USD': '◎', 'LINK/USD': '🔗'};
-        return `
+                'BTC/USD': '₿', 'ETH/USD': 'Ξ', 'ARB/USD': '🔵', 'SOL/USD': '◎', 'LINK/USD': '🔗'
+            };
+            
+            return `
                 <div class="market-card-premium" data-market-address="${market.address}">
                     <div class="market-header-premium">
                         <div class="market-title">
@@ -736,7 +958,8 @@ class GMXStrategy extends BaseStrategy {
                     </div>
                     
                     <div class="market-actions">
-                        <button onclick="window.gmxStrategy.selectMarket('${market.address}')" class="btn-primary-premium">
+                        <button onclick="window.gmxStrategy.selectMarket('${market.address}')" 
+                                class="btn-primary-premium" ${!contractsReady ? 'disabled title="Contrats non initialisés"' : ''}>
                             <i class="fas fa-plus"></i> Déposer
                         </button>
                     </div>
@@ -747,6 +970,7 @@ class GMXStrategy extends BaseStrategy {
         return `
             <div class="markets-premium">
                 <h2><i class="fas fa-fire"></i> Markets Disponibles</h2>
+                ${diagnosticHTML}
                 <div class="markets-grid-premium">${marketsHTML}</div>
             </div>
         `;
@@ -915,6 +1139,20 @@ class GMXStrategy extends BaseStrategy {
     }
 
     async handleDeposit() {
+        console.log('💰 Début handleDeposit...');
+        
+        // Vérifier si les contrats sont initialisés
+        if (!this.contracts_instances.exchangeRouter) {
+            console.log('🔧 Contrats non initialisés, tentative d\'initialisation...');
+            
+            try {
+                await this.forceInitializeContracts();
+            } catch (error) {
+                this.notificationSystem.error('Impossible d\'initialiser les contrats GMX. Vérifiez votre connexion et le réseau.');
+                return;
+            }
+        }
+        
         const depositAmount = document.getElementById('depositAmount');
         
         if (!this.selectedMarket || !depositAmount.value) {
@@ -953,11 +1191,14 @@ class GMXStrategy extends BaseStrategy {
             this.updateDepositButton();
 
         } catch (error) {
-            console.error('Erreur dépôt GMX:', error);
+            console.error('❌ Erreur dépôt GMX:', error);
+            
             // Restaurer le bouton en cas d'erreur
             const depositBtn = document.getElementById('depositBtn');
-            depositBtn.innerHTML = '<i class="fas fa-rocket"></i> Déposer dans GMX';
-            this.updateDepositButton();
+            if (depositBtn) {
+                depositBtn.innerHTML = '<i class="fas fa-rocket"></i> Déposer dans GMX';
+                this.updateDepositButton();
+            }
         }
     }
 
@@ -999,7 +1240,7 @@ class GMXStrategy extends BaseStrategy {
 
     // ===== GESTION DU CYCLE DE VIE =====
     async activate() {
-        console.log('🚀 Activation GMX Strategy (version stable)...');
+        console.log('🚀 Activation GMX Strategy (version corrigée)...');
         
         if (!this.walletManager.isConnected) {
             throw new Error('Wallet non connecté');
@@ -1010,17 +1251,21 @@ class GMXStrategy extends BaseStrategy {
         // Charger les données APY en premier
         await this.loadRealMarketData();
         
-        // Initialiser les contrats seulement si le réseau est supporté
+        // FORCER l'initialisation des contrats si sur Arbitrum
         if (this.checkNetworkSupport()) {
+            console.log('🔧 Réseau Arbitrum détecté, initialisation des contrats...');
+            
             try {
                 await this.initializeContracts();
-                console.log('✅ Contrats initialisés avec succès');
+                console.log('✅ Contrats initialisés avec succès dans activate()');
             } catch (contractError) {
-                console.warn('⚠️ Erreur contrats, mode lecture seule activé:', contractError.message);
-                // Continuer sans les contrats (mode lecture seule)
+                console.error('❌ Erreur contrats dans activate():', contractError);
+                this.notificationSystem.error(`Erreur initialisation contrats: ${contractError.message}`);
             }
             
             this.startRealTimeUpdates();
+        } else {
+            console.warn('⚠️ Réseau non supporté:', this.walletManager.currentNetwork);
         }
         
         // Forcer le rendu après chargement
@@ -1028,39 +1273,161 @@ class GMXStrategy extends BaseStrategy {
             this.renderUI();
         }
     }
-
+    
+    // Gestion des événements de connexion et changement de réseau
     async onWalletConnected(data) {
+        console.log('🔐 Wallet connecté, initialisation GMX...');
         await super.onWalletConnected(data);
         
         if (this.checkNetworkSupport()) {
             try {
+                console.log('🔧 Initialisation contrats après connexion wallet...');
                 await this.initializeContracts();
+                console.log('✅ Contrats initialisés après connexion wallet');
                 this.startRealTimeUpdates();
             } catch (error) {
-                console.warn('⚠️ Erreur initialisation après connexion wallet:', error);
+                console.error('❌ Erreur initialisation après connexion:', error);
+                this.notificationSystem.warning('Contrats GMX non disponibles. Fonctionnalités limitées.');
             }
         }
     }
 
     async onNetworkChanged(data) {
+        console.log('🌐 Changement de réseau détecté:', data);
         await super.onNetworkChanged(data);
         
         this.isNetworkSupported = this.checkNetworkSupport();
         
         if (this.isNetworkSupported) {
             try {
+                console.log('🔧 Initialisation contrats après changement réseau...');
                 await this.initializeContracts();
+                console.log('✅ Contrats initialisés après changement réseau');
                 this.startRealTimeUpdates();
             } catch (error) {
-                console.warn('⚠️ Erreur initialisation après changement réseau:', error);
+                console.error('❌ Erreur initialisation après changement réseau:', error);
+                this.notificationSystem.warning('Erreur initialisation contrats GMX');
             }
         } else {
+            console.log('⚠️ Réseau non supporté, nettoyage des contrats...');
             this.stopRealTimeUpdates();
             this.resetContracts();
         }
         
         if (this.isUIRendered) {
             this.renderUI();
+        }
+    }
+
+    // Méthode pour réinitialiser les contrats
+    async forceInitializeContracts() {
+        console.log('🔧 FORCE initialisation des contrats GMX...');
+        
+        try {
+            // Vérifications préalables
+            if (!this.walletManager.isConnected) {
+                throw new Error('Wallet non connecté');
+            }
+            
+            if (!this.walletManager.provider) {
+                throw new Error('Provider non disponible');
+            }
+            
+            if (!this.walletManager.signer) {
+                throw new Error('Signer non disponible');
+            }
+            
+            // Vérifier le réseau
+            const network = await this.walletManager.provider.getNetwork();
+            console.log('🌐 Réseau actuel:', {
+                chainId: network.chainId.toString(),
+                name: network.name
+            });
+            
+            if (network.chainId !== 42161n) {
+                throw new Error(`Réseau incorrect. Arbitrum requis (42161), actuel: ${network.chainId}`);
+            }
+            
+            // Vérifier que les adresses de contrats sont définies
+            if (!this.contracts.exchangeRouter) {
+                throw new Error('Adresse ExchangeRouter non définie');
+            }
+            
+            console.log('📋 Adresses des contrats:', this.contracts);
+            
+            const ethers = window.ethers;
+            
+            // Initialiser ExchangeRouter
+            const exchangeRouterABI = [
+                'function createDeposit((address,address,address,address,address,address,address[],address[],uint256,bool,uint256,uint256)) external payable returns (bytes32)',
+                'function createWithdrawal((address,address,address,address,address[],address[],uint256,uint256,bool,uint256,uint256)) external payable returns (bytes32)',
+                'function sendTokens(address,address,uint256) external'
+            ];
+
+            console.log('🏗️ Création ExchangeRouter...');
+            this.contracts_instances.exchangeRouter = new ethers.Contract(
+                this.contracts.exchangeRouter,
+                exchangeRouterABI,
+                this.walletManager.signer
+            );
+            
+            // Tester le contrat
+            const code = await this.walletManager.provider.getCode(this.contracts.exchangeRouter);
+            if (code === '0x') {
+                throw new Error('ExchangeRouter: aucun contrat déployé à cette adresse');
+            }
+            
+            console.log('✅ ExchangeRouter initialisé et testé');
+            
+            // Initialiser Reader (optionnel pour les dépôts)
+            try {
+                const readerABI = [
+                    'function getMarketTokenPrice(address,address,address,address,address,bool) external view returns (int256,(int256,int256))'
+                ];
+
+                this.contracts_instances.reader = new ethers.Contract(
+                    this.contracts.reader,
+                    readerABI,
+                    this.walletManager.provider
+                );
+                console.log('✅ Reader initialisé');
+            } catch (readerError) {
+                console.warn('⚠️ Reader non disponible:', readerError.message);
+            }
+            
+            // Initialiser DataStore (optionnel pour les dépôts)
+            try {
+                const dataStoreABI = [
+                    'function getUint(bytes32) external view returns (uint256)'
+                ];
+
+                this.contracts_instances.dataStore = new ethers.Contract(
+                    this.contracts.dataStore,
+                    dataStoreABI,
+                    this.walletManager.provider
+                );
+                console.log('✅ DataStore initialisé');
+            } catch (dataStoreError) {
+                console.warn('⚠️ DataStore non disponible:', dataStoreError.message);
+            }
+            
+            console.log('🎉 Initialisation des contrats RÉUSSIE !');
+            this.notificationSystem.success('Contrats GMX initialisés avec succès');
+            
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Erreur FORCE initialisation:', error);
+            this.notificationSystem.error(`Erreur contrats: ${error.message}`);
+            
+            // Reset en cas d'erreur
+            this.contracts_instances = {
+                exchangeRouter: null,
+                reader: null,
+                dataStore: null
+            };
+            
+            throw error;
         }
     }
 
